@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Snake</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;
+    border-radius:10px;background:#05070a;box-shadow:0 12px 40px -12px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<canvas id="c" width="420" height="420"></canvas>
+<script>
+(function(){
+  var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+  var N=20, C=cv.width/N;
+  var snake, dir, queue, food, score, best, dead, step, acc, last, tstart;
+  best = +(localStorage.getItem("snake_best") || 0);
+
+  function reset(){
+    snake=[{x:9,y:10},{x:8,y:10},{x:7,y:10}];
+    dir={x:1,y:0}; queue=[]; score=0; dead=false; step=140; acc=0; last=0;
+    place();
+  }
+  function place(){
+    do { food={x:(Math.random()*N)|0, y:(Math.random()*N)|0}; }
+    while (snake.some(function(s){return s.x===food.x&&s.y===food.y;}));
+  }
+  function push(d){
+    var last = queue.length ? queue[queue.length-1] : dir;
+    if (last.x===-d.x && last.y===-d.y) return;
+    if (last.x===d.x && last.y===d.y) return;
+    if (queue.length<2) queue.push(d);
+  }
+  function over(){
+    dead=true;
+    if (score>best){ best=score; localStorage.setItem("snake_best", best); }
+  }
+  function tick(){
+    if (queue.length) dir=queue.shift();
+    var nx=snake[0].x+dir.x, ny=snake[0].y+dir.y;
+    if (nx<0||ny<0||nx>=N||ny>=N) return over();
+    for (var i=0;i<snake.length-1;i++) if (snake[i].x===nx&&snake[i].y===ny) return over();
+    snake.unshift({x:nx,y:ny});
+    if (nx===food.x&&ny===food.y){ score++; place(); if (step>60) step-=2; }
+    else snake.pop();
+  }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+
+  function draw(){
+    ctx.fillStyle="#05070a"; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.strokeStyle="rgba(255,255,255,.035)"; ctx.lineWidth=1;
+    for (var i=1;i<N;i++){
+      ctx.beginPath(); ctx.moveTo(i*C,0); ctx.lineTo(i*C,cv.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,i*C); ctx.lineTo(cv.width,i*C); ctx.stroke();
+    }
+    ctx.fillStyle="#22c55e";
+    rr(food.x*C+3, food.y*C+3, C-6, C-6, 4);
+    for (var j=snake.length-1;j>=0;j--){
+      var s=snake[j];
+      ctx.fillStyle = j===0 ? "#ffc266" : (j%2 ? "#f7931a" : "#e8810f");
+      rr(s.x*C+2, s.y*C+2, C-4, C-4, j===0?5:3);
+    }
+    ctx.fillStyle="#98a2b3"; ctx.font="600 15px Inter, Arial"; ctx.textAlign="left";
+    ctx.fillText("SCORE  "+score, 10, 21);
+    ctx.textAlign="right";
+    ctx.fillText("BEST  "+best, cv.width-10, 21);
+    if (dead){
+      ctx.fillStyle="rgba(5,7,10,.82)"; ctx.fillRect(0,0,cv.width,cv.height);
+      ctx.textAlign="center";
+      ctx.fillStyle="#eef1f5"; ctx.font="800 40px Inter, Arial";
+      ctx.fillText("Game Over", cv.width/2, cv.height/2-26);
+      ctx.fillStyle="#f7931a"; ctx.font="700 26px Inter, Arial";
+      ctx.fillText("Score "+score, cv.width/2, cv.height/2+18);
+      ctx.fillStyle="#98a2b3"; ctx.font="500 15px Inter, Arial";
+      ctx.fillText("Tap or press Space to play again", cv.width/2, cv.height/2+58);
+    }
+  }
+  function loop(t){
+    requestAnimationFrame(loop);
+    if (!last) last=t;
+    var dt=t-last; last=t;
+    if (!dead){ acc+=dt; while (acc>=step){ acc-=step; tick(); if(dead) break; } }
+    draw();
+  }
+
+  var KEY={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
+    w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],W:[0,-1],S:[0,1],A:[-1,0],D:[1,0]};
+  addEventListener("keydown", function(e){
+    if (e.key in KEY){ e.preventDefault(); if(dead){reset();return;} var k=KEY[e.key]; push({x:k[0],y:k[1]}); }
+    else if (e.key===" "){ e.preventDefault(); if(dead) reset(); }
+  });
+  var sx=0, sy=0;
+  cv.addEventListener("touchstart", function(e){ var t=e.touches[0]; sx=t.clientX; sy=t.clientY; }, {passive:true});
+  cv.addEventListener("touchend", function(e){
+    if (dead){ reset(); return; }
+    var t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+    if (Math.abs(dx)<16 && Math.abs(dy)<16) return;
+    if (Math.abs(dx)>Math.abs(dy)) push({x:dx>0?1:-1,y:0}); else push({x:0,y:dy>0?1:-1});
+  }, {passive:true});
+  cv.addEventListener("mousedown", function(){ if(dead) reset(); });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

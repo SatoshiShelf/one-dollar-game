@@ -1,0 +1,11 @@
+name = "one-dollar-game"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+BTC_API = "https://mempool.space/api"
+LTC_API = "https://litecoinspace.org/api"
+ETH_RPC = "https://ethereum-rpc.publicnode.com"
+
+# Set the signing secret (required) with:
+#   npx wrangler secret put DOWNLOAD_SECRET

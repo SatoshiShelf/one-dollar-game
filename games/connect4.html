@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Connect Four</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;overflow:hidden;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  #app{width:min(94vw,500px);padding:12px;position:relative}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:14px;color:#98a2b3}
+  .top b{color:#eef1f5}
+  .score{display:flex;gap:12px;font-weight:700}
+  .score .you{color:#ef4444} .score .cpu{color:#f5c518}
+  .board{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;background:#141b2e;
+    border:2px solid #24304d;border-radius:14px;padding:10px;aspect-ratio:7/6}
+  .cell{border-radius:50%;background:#0b0f19;cursor:pointer;position:relative;box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+  .cell::after{content:"";display:block;padding-top:100%}
+  .disc{position:absolute;inset:6%;border-radius:50%;animation:pop .16s ease-out}
+  .disc.human{background:radial-gradient(circle at 40% 35%, #ff7a7a, #d64545)}
+  .disc.cpu{background:radial-gradient(circle at 40% 35%, #ffe084, #e0a800)}
+  .cell.win .disc{box-shadow:0 0 0 4px rgba(255,255,255,.85)}
+  @keyframes pop{from{transform:scale(.4);opacity:.4}to{transform:scale(1);opacity:1}}
+  .status{text-align:center;margin-top:12px;font-size:15px;font-weight:700;min-height:22px}
+  .status.you{color:#ef4444} .status.cpu{color:#f5c518} .status.draw{color:#98a2b3}
+  .buttons{display:flex;justify-content:center;gap:10px;margin-top:10px}
+  .buttons button{background:#14171f;border:1px solid #242a35;color:#eef1f5;border-radius:10px;padding:10px 16px;
+    font-family:inherit;font-size:14px;cursor:pointer}
+  .buttons button:hover{background:#191d26}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <span>Turn <b id="turn">You</b></span>
+    <span class="score"><span class="you">You <b id="youScore">0</b></span><span class="cpu">CPU <b id="cpuScore">0</b></span></span>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="status" id="status">You are red. Click a column to drop.</div>
+  <div class="buttons"><button id="new">New game</button></div>
+</div>
+<script>
+(function(){
+  var ROWS=6, COLS=7, HUMAN=1, CPU=2;
+  var INF=1e9;
+  var boardEl=document.getElementById("board"), statusEl=document.getElementById("status"),
+      turnEl=document.getElementById("turn"), youScoreEl=document.getElementById("youScore"), cpuScoreEl=document.getElementById("cpuScore");
+  var board, cells, over, turn, youScore=0, cpuScore=0;
+
+  for(var i=0;i<ROWS*COLS;i++){
+    var d=document.createElement("div"); d.className="cell"; d.dataset.i=i;
+    boardEl.appendChild(d);
+  }
+  cells=[].slice.call(boardEl.children);
+
+  function idx(r,c){ return r*COLS+c; }
+  function newBoard(){ return Array.from({length:ROWS}, function(){ return new Array(COLS).fill(0); }); }
+  function dropRow(b,c){ for(var r=ROWS-1;r>=0;r--) if(!b[r][c]) return r; return -1; }
+  function canPlay(b,c){ return c>=0&&c<COLS&&b[0][c]===0; }
+  function wins(b,p){
+    var dirs=[[0,1],[1,0],[1,1],[1,-1]];
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++){
+      if(b[r][c]!==p) continue;
+      for(var d=0;d<4;d++){
+        var dr=dirs[d][0], dc=dirs[d][1];
+        var er=r+dr*3, ec=c+dc*3;
+        if(er<0||er>=ROWS||ec<0||ec>=COLS) continue;
+        var ok=true;
+        for(var k=1;k<4;k++) if(b[r+dr*k][c+dc*k]!==p){ ok=false; break; }
+        if(ok) return true;
+      }
+    }
+    return false;
+  }
+  function winCells(b,p){
+    var dirs=[[0,1],[1,0],[1,1],[1,-1]];
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++){
+      if(b[r][c]!==p) continue;
+      for(var d=0;d<4;d++){
+        var dr=dirs[d][0], dc=dirs[d][1];
+        var er=r+dr*3, ec=c+dc*3;
+        if(er<0||er>=ROWS||ec<0||ec>=COLS) continue;
+        var ok=true, out=[];
+        for(var k=0;k<4;k++){ out.push([r+dr*k,c+dc*k]); if(b[r+dr*k][c+dc*k]!==p) ok=false; }
+        if(ok) return out;
+      }
+    }
+    return null;
+  }
+  function full(b){ for(var c=0;c<COLS;c++) if(b[0][c]===0) return false; return true; }
+
+  function scorePos(b,p){
+    var opp = p===HUMAN?CPU:HUMAN, s=0;
+    for(var r=0;r<ROWS;r++) if(b[r][3]===p) s+=3;
+    var dirs=[[0,1],[1,0],[1,1],[1,-1]];
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++) for(var d=0;d<4;d++){
+      var dr=dirs[d][0], dc=dirs[d][1];
+      var er=r+dr*3, ec=c+dc*3;
+      if(er<0||er>=ROWS||ec<0||ec>=COLS) continue;
+      var cp=0, co=0, e=0;
+      for(var k=0;k<4;k++){ var v=b[r+dr*k][c+dc*k]; if(v===p)cp++; else if(v===opp)co++; else e++; }
+      if(cp&&co) continue;
+      if(cp===3&&e===1) s+=120; else if(cp===2&&e===2) s+=12;
+      if(co===3&&e===1) s-=150; else if(co===2&&e===2) s-=14;
+    }
+    return s;
+  }
+  function minimax(b, depth, alpha, beta, maximizing){
+    if(wins(b, CPU)) return 100000 + depth;
+    if(wins(b, HUMAN)) return -100000 - depth;
+    if(full(b) || depth===0) return scorePos(b, CPU);
+    var c, r, v;
+    if(maximizing){
+      v=-INF;
+      for(c=0;c<COLS;c++){ if(!canPlay(b,c)) continue; r=dropRow(b,c); b[r][c]=CPU;
+        v=Math.max(v, minimax(b, depth-1, alpha, beta, false)); b[r][c]=0;
+        alpha=Math.max(alpha,v); if(beta<=alpha) break; }
+      return v;
+    } else {
+      v=INF;
+      for(c=0;c<COLS;c++){ if(!canPlay(b,c)) continue; r=dropRow(b,c); b[r][c]=HUMAN;
+        v=Math.min(v, minimax(b, depth-1, alpha, beta, true)); b[r][c]=0;
+        beta=Math.min(beta,v); if(beta<=alpha) break; }
+      return v;
+    }
+  }
+  function aiMove(b){
+    var best=-INF, choice=-1, order=[3,2,4,1,5,0,6];
+    for(var i=0;i<order.length;i++){
+      var c=order[i];
+      if(!canPlay(b,c)) continue;
+      var r=dropRow(b,c); b[r][c]=CPU;
+      var s=minimax(b, 5, -INF, INF, false);
+      b[r][c]=0;
+      if(s>best){ best=s; choice=c; }
+    }
+    return choice;
+  }
+
+  function paint(){
+    for(var i=0;i<ROWS*COLS;i++){
+      var r=Math.floor(i/COLS), c=i%COLS;
+      var el=cells[i];
+      el.innerHTML="";
+      el.classList.remove("win");
+      var v=board[r][c];
+      if(v){
+        var disc=document.createElement("div");
+        disc.className="disc "+(v===HUMAN?"human":"cpu");
+        el.appendChild(disc);
+      }
+    }
+  }
+  function setStatus(txt, cls){ statusEl.textContent=txt; statusEl.className="status"+(cls?" "+cls:""); }
+
+  function finish(winner){
+    over=true;
+    if(winner===HUMAN){
+      youScore++; youScoreEl.textContent=youScore;
+      setStatus("You win! Four in a row.", "you");
+      highlight(HUMAN);
+    } else if(winner===CPU){
+      cpuScore++; cpuScoreEl.textContent=cpuScore;
+      setStatus("CPU wins this one. Try again.", "cpu");
+      highlight(CPU);
+    } else {
+      setStatus("It's a draw.", "draw");
+    }
+    turnEl.textContent="-";
+  }
+  function highlight(p){
+    var wc=winCells(board,p);
+    if(wc) wc.forEach(function(rc){ cells[idx(rc[0],rc[1])].classList.add("win"); });
+  }
+  function place(c, p){
+    var r=dropRow(board,c);
+    if(r<0) return false;
+    board[r][c]=p;
+    paint();
+    if(wins(board,p)){ finish(p); return true; }
+    if(full(board)){ finish(0); return true; }
+    return false;
+  }
+  function humanTurn(c){
+    if(over||turn!==HUMAN) return;
+    if(!canPlay(board,c)) return;
+    var done=place(c, HUMAN);
+    if(done) return;
+    turn=CPU; turnEl.textContent="CPU";
+    setStatus("CPU is thinking...", "");
+    setTimeout(function(){
+      if(over) return;
+      var c2=aiMove(board);
+      if(c2<0){ finish(0); return; }
+      var done2=place(c2, CPU);
+      if(done2) return;
+      turn=HUMAN; turnEl.textContent="You";
+      setStatus("Your move. Click a column.", "");
+    }, 260);
+  }
+  function newGame(){
+    board=newBoard(); over=false; turn=HUMAN;
+    paint();
+    turnEl.textContent="You";
+    setStatus("You are red. Click a column to drop.", "");
+  }
+  boardEl.addEventListener("click", function(e){
+    var cell=e.target.closest(".cell"); if(!cell) return;
+    var i=+cell.dataset.i, c=i%COLS;
+    humanTurn(c);
+  });
+  document.getElementById("new").addEventListener("click", newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>

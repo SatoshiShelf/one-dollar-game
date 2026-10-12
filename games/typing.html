@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Typing Speed</title>
+<style>
+  html,body{margin:0;min-height:100%;background:#0a0c10;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#eef1f5}
+  body{display:flex;align-items:center;justify-content:center;padding:16px}
+  #app{width:min(94vw,720px)}
+  .bar{display:flex;justify-content:space-between;gap:10px;margin-bottom:14px;font-size:14px;color:#98a2b3}
+  .bar b{color:#eef1f5;font-size:18px}
+  .bar .stat{text-align:center}
+  .passage{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:clamp(17px,2.6vw,22px);line-height:1.9;
+    background:#0f1218;border:1px solid #242a35;border-radius:14px;padding:20px;letter-spacing:.02em}
+  .passage .c{color:#c3cad6}
+  .passage .ok{color:#22c55e}
+  .passage .bad{color:#ef4444;background:rgba(239,68,68,.14);border-radius:3px}
+  .passage .cur{background:rgba(247,147,26,.30);border-radius:3px}
+  .hint{margin-top:12px;font-size:13px;color:#6b7480;text-align:center}
+  .overlay{position:fixed;inset:0;display:none;place-items:center;background:rgba(5,7,10,.9);padding:16px;z-index:5}
+  .overlay.show{display:grid}
+  .card{background:#0f1218;border:1px solid #242a35;border-radius:16px;padding:26px 30px;text-align:center;max-width:420px}
+  .card h2{margin:0 0 10px;font-size:28px;color:#22c55e}
+  .card .row{display:flex;gap:26px;justify-content:center;margin:14px 0}
+  .card .row div span{display:block;font-size:12px;color:#98a2b3;letter-spacing:.1em}
+  .card .row div b{font-size:30px}
+  .card button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;font-weight:700;
+    font-size:15px;font-family:inherit;border-radius:11px;padding:12px 22px;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="bar">
+    <div class="stat">Time<br><b id="time">60</b>s</div>
+    <div class="stat">WPM<br><b id="wpm">0</b></div>
+    <div class="stat">Accuracy<br><b id="acc">100</b>%</div>
+  </div>
+  <div class="passage" id="passage"></div>
+  <div class="hint">Just start typing. Backspace fixes mistakes. The clock starts on your first key.</div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h2 id="ovTitle">Nice run!</h2>
+    <div class="row">
+      <div><span>WPM</span><b id="fWpm">0</b></div>
+      <div><span>ACCURACY</span><b id="fAcc">0%</b></div>
+    </div>
+    <div style="color:#98a2b3;font-size:13px" id="ovBest"></div>
+    <button id="ovBtn">Try again</button>
+  </div>
+</div>
+<script>
+(function(){
+  var PASSAGES=[
+    "the quick brown fox jumps over the lazy dog while the sun sets slowly behind the old oak tree",
+    "a blockchain is a growing list of records called blocks that are linked together using cryptography",
+    "programming is the art of telling a computer what to do and then discovering why it refused",
+    "the best way to learn to code is to build small projects that you actually enjoy using every day",
+    "satoshi nakamoto released bitcoin in two thousand nine and changed the world of money forever",
+    "practice does not make perfect but perfect practice with clear feedback makes steady progress each week"
+  ];
+  var LIMIT=60;
+  var passageEl=document.getElementById("passage"), timeEl=document.getElementById("time"),
+      wpmEl=document.getElementById("wpm"), accEl=document.getElementById("acc"),
+      overlay=document.getElementById("overlay"), ovTitle=document.getElementById("ovTitle"),
+      fWpm=document.getElementById("fWpm"), fAcc=document.getElementById("fAcc"), ovBest=document.getElementById("ovBest");
+  var target, typed, started, timer, left, done;
+  var best=+(localStorage.getItem("typing_best")||0);
+
+  function pick(){ return PASSAGES[(Math.random()*PASSAGES.length)|0]; }
+  function reset(){
+    target=pick(); typed=""; started=false; done=false; left=LIMIT;
+    if(timer) clearInterval(timer); timer=null;
+    timeEl.textContent=LIMIT; wpmEl.textContent="0"; accEl.textContent="100";
+    overlay.classList.remove("show");
+    render();
+  }
+  function stats(){
+    var correct=0, wrong=0;
+    for(var i=0;i<typed.length;i++){ if(typed[i]===target[i]) correct++; else wrong++; }
+    var elapsed=started ? (LIMIT-left) : 0;
+    var wpm = elapsed>0 ? Math.round((correct/5)/(elapsed/60)) : 0;
+    var acc = typed.length ? Math.round(correct/typed.length*100) : 100;
+    wpmEl.textContent=wpm; accEl.textContent=acc;
+    return {correct:correct, wrong:wrong, wpm:wpm, acc:acc};
+  }
+  function render(){
+    var html="";
+    for(var i=0;i<target.length;i++){
+      var ch=target[i]===" "?"&nbsp;":target[i];
+      var cls="c";
+      if(i<typed.length) cls = typed[i]===target[i] ? "ok" : "bad";
+      else if(i===typed.length) cls="c cur";
+      html+='<span class="'+cls+'">'+ch+'</span>';
+    }
+    passageEl.innerHTML=html;
+    stats();
+  }
+  function finish(){
+    if(done) return;
+    done=true; if(timer) clearInterval(timer); timer=null;
+    var s=stats();
+    var isBest=false;
+    if(s.wpm>best){ best=s.wpm; localStorage.setItem("typing_best",best); isBest=true; }
+    ovTitle.textContent = typed.length>=target.length ? "Completed!" : "Time!";
+    fWpm.textContent=s.wpm; fAcc.textContent=s.acc+"%";
+    ovBest.textContent="Best: "+best+" wpm"+(isBest?"  \u00b7  new record!":"");
+    overlay.classList.add("show");
+  }
+  function startTimer(){
+    if(started) return; started=true;
+    timer=setInterval(function(){
+      left--; timeEl.textContent=left;
+      stats();
+      if(left<=0) finish();
+    },1000);
+  }
+  addEventListener("keydown", function(e){
+    if(done) return;
+    if(e.key==="Backspace"){ typed=typed.slice(0,-1); e.preventDefault(); render(); return; }
+    if(e.key===" "||e.key==="Spacebar") e.preventDefault();
+    if(e.key.length===1 && !e.ctrlKey && !e.metaKey && !e.altKey){
+      if(!started) startTimer();
+      if(typed.length<target.length){ typed+=e.key; render(); if(typed.length===target.length) finish(); }
+    }
+  });
+  document.getElementById("ovBtn").addEventListener("click", reset);
+  reset();
+})();
+</script>
+</body>
+</html>

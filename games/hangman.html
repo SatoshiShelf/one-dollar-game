@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Hangman</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  #app{width:min(96vw,520px);padding:12px}
+  .bar{display:flex;justify-content:space-between;font-size:13px;color:#98a2b3;margin-bottom:8px}
+  .bar b{color:#eef1f5}
+  svg{display:block;margin:0 auto;background:#0f1218;border:1px solid #242a35;border-radius:12px}
+  .word{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:18px 0;font-size:clamp(20px,6vw,30px);
+    font-weight:800;letter-spacing:.06em;font-family:ui-monospace,Menlo,monospace;min-height:36px}
+  .word .ch{color:#f7931a}
+  .word .miss{color:#6b7480}
+  .keys{display:grid;grid-template-columns:repeat(9,1fr);gap:6px}
+  .keys button{aspect-ratio:1/1;background:#14171f;border:1px solid #242a35;color:#eef1f5;border-radius:8px;
+    font-family:inherit;font-size:clamp(12px,3.6vw,15px);font-weight:600;cursor:pointer}
+  .keys button:hover:not(:disabled){background:#191d26;border-color:#333b48}
+  .keys button.hit{background:rgba(34,197,94,.2);border-color:#22c55e;color:#86efac}
+  .keys button.bad{background:rgba(239,68,68,.16);border-color:#ef4444;color:#fca5a5}
+  .keys button:disabled{cursor:default;opacity:.55}
+  .status{text-align:center;margin-top:14px;font-size:15px;font-weight:600;min-height:22px}
+  .status.win{color:#22c55e} .status.lose{color:#ef4444}
+  .again{display:block;margin:12px auto 0;background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:11px 22px;cursor:pointer;display:none}
+  .again.show{display:block}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="bar"><span>Wrong <b id="wrong">0</b>/6</span><span>Wins <b id="wins">0</b></span></div>
+  <svg width="200" height="180" viewBox="0 0 200 180">
+    <line x1="20" y1="170" x2="120" y2="170" stroke="#3a4253" stroke-width="4"/>
+    <line x1="60" y1="170" x2="60" y2="20" stroke="#3a4253" stroke-width="4"/>
+    <line x1="60" y1="20" x2="130" y2="20" stroke="#3a4253" stroke-width="4"/>
+    <line x1="130" y1="20" x2="130" y2="45" stroke="#3a4253" stroke-width="3"/>
+    <g id="parts" stroke="#f7931a" stroke-width="4" fill="none" stroke-linecap="round"></g>
+  </svg>
+  <div class="word" id="word"></div>
+  <div class="keys" id="keys"></div>
+  <div class="status" id="status"></div>
+  <button class="again" id="again">Play again</button>
+</div>
+<script>
+(function(){
+  var WORDS=["JAVASCRIPT","PYTHON","BITCOIN","KEYBOARD","ELEPHANT","GUITAR","ROCKET","SATELLITE","GUACAMOLE","PENGUIN",
+    "CRYSTAL","MONITOR","PIRATE","VOLCANO","COMPASS","DIAMOND","HARMONY","JOURNEY","LANTERN","MYSTERY"];
+  var wordEl=document.getElementById("word"), keysEl=document.getElementById("keys"),
+      statusEl=document.getElementById("status"), partsEl=document.getElementById("parts"),
+      wrongEl=document.getElementById("wrong"), winsEl=document.getElementById("wins"),
+      again=document.getElementById("again");
+  var word, guessed, wrong, over, wins=0;
+  var PARTS=[
+    '<circle cx="130" cy="56" r="11"/>',
+    '<line x1="130" y1="67" x2="130" y2="110"/>',
+    '<line x1="130" y1="78" x2="112" y2="95"/>',
+    '<line x1="130" y1="78" x2="148" y2="95"/>',
+    '<line x1="130" y1="110" x2="114" y2="134"/>',
+    '<line x1="130" y1="110" x2="146" y2="134"/>'
+  ];
+  function reset(){
+    word=WORDS[(Math.random()*WORDS.length)|0];
+    guessed={}; wrong=0; over=false;
+    wrongEl.textContent="0"; statusEl.textContent=""; statusEl.className="status";
+    again.classList.remove("show");
+    partsEl.innerHTML="";
+    renderWord(); renderKeys();
+  }
+  function renderWord(){
+    wordEl.innerHTML="";
+    for(var i=0;i<word.length;i++){
+      var ch=word[i];
+      var span=document.createElement("span");
+      span.className="ch"+(guessed[ch]==="hit"?"":" miss");
+      span.textContent = (guessed[ch]==="hit") ? ch : "\u2013";
+      wordEl.appendChild(span);
+    }
+  }
+  function renderKeys(){
+    keysEl.innerHTML="";
+    for(var i=0;i<26;i++){
+      (function(letter){
+        var b=document.createElement("button");
+        b.textContent=letter;
+        if(guessed[letter]==="hit"){ b.classList.add("hit"); b.disabled=true; }
+        else if(guessed[letter]==="bad"){ b.classList.add("bad"); b.disabled=true; }
+        if(over) b.disabled=true;
+        b.addEventListener("click", function(){ guess(letter); });
+        keysEl.appendChild(b);
+      })(String.fromCharCode(65+i));
+    }
+  }
+  function guess(letter){
+    if(over || guessed[letter]) return;
+    if(word.indexOf(letter)>=0){
+      guessed[letter]="hit";
+      var solved=true;
+      for(var i=0;i<word.length;i++) if(!guessed[word[i]]) solved=false;
+      if(solved){
+        over=true;
+        for(var k=0;k<word.length;k++) guessed[word[k]]="hit";
+        wins++; winsEl.textContent=wins;
+        statusEl.textContent="You saved him! The word was "+word;
+        statusEl.className="status win"; again.classList.add("show");
+      }
+    } else {
+      guessed[letter]="bad"; wrong++; wrongEl.textContent=wrong;
+      partsEl.innerHTML=PARTS.slice(0,wrong).join("");
+      if(wrong>=6){
+        over=true;
+        statusEl.textContent="Out of guesses. The word was "+word;
+        statusEl.className="status lose"; again.classList.add("show");
+      }
+    }
+    renderWord(); renderKeys();
+  }
+  addEventListener("keydown", function(e){
+    if(over) return;
+    var k=e.key.toUpperCase();
+    if(/^[A-Z]$/.test(k)) guess(k);
+  });
+  again.addEventListener("click", reset);
+  reset();
+})();
+</script>
+</body>
+</html>

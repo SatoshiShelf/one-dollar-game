@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Stacker</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;overflow:hidden;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center;touch-action:none}
+  #wrap{position:relative;height:min(96vh,720px);aspect-ratio:1/2}
+  canvas{display:block;width:100%;height:100%;background:#0d1017;border:1px solid #242a35;border-radius:14px}
+  .hud{position:absolute;top:12px;left:0;right:0;text-align:center;pointer-events:none}
+  .hud .n{font-size:34px;font-weight:800;color:#eef1f5}
+  .hud .l{font-size:12px;letter-spacing:.16em;color:#98a2b3}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;
+    background:rgba(5,7,10,.86);border-radius:14px;padding:16px}
+  .overlay.show{display:grid}
+  .overlay h2{margin:0 0 6px;font-size:28px;color:#f7931a}
+  .overlay p{margin:0 0 14px;color:#98a2b3;font-size:14px}
+  .overlay button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:12px 22px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="360" height="720"></canvas>
+  <div class="hud"><div class="n" id="score">0</div><div class="l">HEIGHT</div></div>
+  <div class="overlay show" id="overlay">
+    <div>
+      <h2 id="ovTitle">STACKER</h2>
+      <p id="ovSub">Click or press Space to drop each block.<br>Line it up - the overhang gets sliced off.</p>
+      <button id="ovBtn">Play</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var scoreEl=document.getElementById("score"), overlay=document.getElementById("overlay"),
+      ovTitle=document.getElementById("ovTitle"), ovSub=document.getElementById("ovSub"), ovBtn=document.getElementById("ovBtn");
+  var BH=34, BASE_Y=H-70, CAM=150;
+  var placed, moving, dir, speed, score, state, best=+(localStorage.getItem("stack_best")||0);
+  var COLORS=["#f7931a","#ffb347","#22c55e","#38bdf8","#a78bfa","#ec4899","#facc15"];
+
+  function spawn(w, y){
+    dir = dir==null ? 1 : -dir;
+    var x = dir>0 ? -w : W;
+    moving={x:x, w:w, y:y};
+    speed = 1.8 + score*0.16;
+  }
+  function reset(){
+    BASE_Y=H-70;
+    placed=[{x:W/2-60, w:120, y:BASE_Y, c:COLORS[0]}];
+    score=0; scoreEl.textContent="0"; state="play"; dir=null;
+    spawn(120, BASE_Y-BH);
+    overlay.classList.remove("show");
+  }
+  function drop(){
+    if(state!=="play") return;
+    var top=placed[placed.length-1];
+    var a=Math.max(moving.x, top.x), b=Math.min(moving.x+moving.w, top.x+top.w);
+    if(b-a<=2){ state="over"; gameOver(); return; }
+    placed.push({x:a, w:b-a, y:moving.y, c:COLORS[placed.length%COLORS.length]});
+    score++; scoreEl.textContent=score;
+    if(moving.y-BH < CAM){
+      var d=CAM-(moving.y-BH);
+      for(var i=0;i<placed.length;i++) placed[i].y+=d;
+      moving.y+=d; BASE_Y+=d;
+    }
+    spawn(b-a, moving.y-BH);
+  }
+  function gameOver(){
+    if(score>best){ best=score; localStorage.setItem("stack_best",best); }
+    ovTitle.textContent="Game over";
+    ovSub.textContent="Height "+score+"  ·  best "+best;
+    ovBtn.textContent="Play again";
+    overlay.classList.add("show");
+  }
+  function update(){
+    if(state!=="play") return;
+    moving.x += dir*speed;
+    if(moving.x<0){ moving.x=0; dir=1; }
+    if(moving.x+moving.w>W){ moving.x=W-moving.w; dir=-1; }
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle="#0d1017"; ctx.fillRect(0,0,W,H);
+    for(var i=0;i<placed.length;i++){
+      var p=placed[i];
+      block(p.x,p.y,p.w,BH,p.c);
+    }
+    if(state==="play") block(moving.x, moving.y, moving.w, BH, "#eef1f5", true);
+    // ground
+    ctx.fillStyle="#161b24"; ctx.fillRect(0, BASE_Y+BH, W, H-BASE_Y-BH);
+  }
+  function block(x,y,w,h,c,glow){
+    ctx.fillStyle=c;
+    roundRect(x,y,w,h,6); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.22)";
+    roundRect(x,y,w,h*0.32,6); ctx.fill();
+    if(glow){ ctx.strokeStyle="#f7931a"; ctx.lineWidth=2; roundRect(x,y,w,h,6); ctx.stroke(); }
+  }
+  function roundRect(x,y,w,h,r){
+    r=Math.min(r,h/2,w/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function act(){ if(state==="play") drop(); else reset(); }
+  ovBtn.addEventListener("click", function(e){ e.stopPropagation(); reset(); });
+  cv.addEventListener("pointerdown", act);
+  addEventListener("keydown", function(e){ if(e.key===" "||e.key==="ArrowDown"){ e.preventDefault(); act(); } });
+  reset();
+  (function loop(){ update(); draw(); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

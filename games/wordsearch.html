@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Word Search</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  #app{width:min(97vw,660px);padding:10px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+  .left{flex:1 1 340px;max-width:420px}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;background:#12151b;
+    border:1px solid #242a35;border-radius:12px;padding:6px;touch-action:none;user-select:none}
+  .cell{aspect-ratio:1/1;display:grid;place-items:center;font-size:clamp(9px,2.6vw,15px);
+    font-weight:700;color:#c3cad6;border-radius:4px;cursor:pointer}
+  .cell.hi{background:rgba(247,147,26,.35);color:#fff}
+  .cell.found{background:rgba(34,197,94,.22);color:#86efac}
+  .right{flex:0 0 180px}
+  .bar{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#98a2b3;margin-bottom:10px}
+  .bar b{color:#eef1f5}
+  .bar button{background:#14171f;border:1px solid #242a35;color:#eef1f5;border-radius:9px;padding:7px 11px;font-family:inherit;font-size:13px;cursor:pointer}
+  .words{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;letter-spacing:.04em;color:#c3cad6}
+  .words .w.done{color:#22c55e;text-decoration:line-through}
+  @media (max-width:660px){ .right{flex:1 1 100%} .words{flex-direction:row;flex-wrap:wrap} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="left">
+    <div class="bar"><span>Found <b id="found">0</b>/<b id="total">0</b></span><span>Time <b id="time">0s</b></span><button id="new">New</button></div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <div class="right"><div class="words" id="words"></div></div>
+</div>
+<script>
+(function(){
+  var SIZE=12;
+  var WORDS=["BITCOIN","WALLET","ORANGE","NETWORK","LEDGER","CRYPTO","MINING","SATOSHI"];
+  var DIRS=[[0,1],[1,0],[1,1],[1,-1],[0,-1],[-1,0],[-1,-1],[-1,1]];
+  var gridEl=document.getElementById("grid"), wordsEl=document.getElementById("words"),
+      foundEl=document.getElementById("found"), totalEl=document.getElementById("total"), timeEl=document.getElementById("time");
+  var letters, placements, foundSet, dragging, start, secs, started, timer;
+
+  function rand(n){ return (Math.random()*n)|0; }
+  function build(){
+    for(var attempt=0;attempt<200;attempt++){
+      letters=[]; for(var i=0;i<SIZE*SIZE;i++) letters.push("");
+      placements={}; var ok=true;
+      for(var w=0;w<WORDS.length;w++){
+        var word=WORDS[w]; var placed=false;
+        for(var t=0;t<300 && !placed;t++){
+          var d=DIRS[rand(DIRS.length)];
+          var r=rand(SIZE), c=rand(SIZE);
+          var er=r+d[0]*(word.length-1), ec=c+d[1]*(word.length-1);
+          if(er<0||er>=SIZE||ec<0||ec>=SIZE) continue;
+          var fits=true, cells=[];
+          for(var k=0;k<word.length;k++){
+            var rr=r+d[0]*k, cc=c+d[1]*k, ch=letters[rr*SIZE+cc];
+            if(ch && ch!==word[k]){ fits=false; break; }
+            cells.push([rr,cc]);
+          }
+          if(!fits) continue;
+          for(var k2=0;k2<word.length;k2++) letters[cells[k2][0]*SIZE+cells[k2][1]]=word[k2];
+          placements[word]=cells; placed=true;
+        }
+        if(!placed){ ok=false; break; }
+      }
+      if(ok) break;
+    }
+    for(var i2=0;i2<letters.length;i2++) if(!letters[i2]) letters[i2]=String.fromCharCode(65+rand(26));
+  }
+  function render(){
+    gridEl.innerHTML="";
+    for(var i=0;i<SIZE*SIZE;i++){
+      var d=document.createElement("div"); d.className="cell"; d.dataset.i=i;
+      d.textContent=letters[i]; gridEl.appendChild(d);
+    }
+  }
+  function cellPos(e){
+    var r=gridEl.getBoundingClientRect();
+    var x=(e.clientX-r.left)/r.width*SIZE, y=(e.clientY-r.top)/r.height*SIZE;
+    var cc=Math.floor(x), rr=Math.floor(y);
+    if(rr<0||rr>=SIZE||cc<0||cc>=SIZE) return null;
+    return {r:rr,c:cc};
+  }
+  function lineCells(a,b){
+    var dr=b.r-a.r, dc=b.c-a.c, adr=Math.abs(dr), adc=Math.abs(dc);
+    if(dr!==0 && dc!==0 && adr!==adc) return null;
+    var steps=Math.max(adr,adc), sr=Math.sign(dr), sc=Math.sign(dc), out=[];
+    for(var i=0;i<=steps;i++) out.push([a.r+sr*i, a.c+sc*i]);
+    return out;
+  }
+  function idx(r,c){ return r*SIZE+c; }
+  function highlight(cells){
+    [].forEach.call(gridEl.children, function(el){ el.classList.remove("hi"); });
+    if(!cells) return;
+    cells.forEach(function([r,c]){ gridEl.children[idx(r,c)].classList.add("hi"); });
+  }
+  function startTimer(){ if(started) return; started=true; timer=setInterval(function(){ secs++; timeEl.textContent=secs+"s"; },1000); }
+  function pointerDown(e){
+    startTimer();
+    start=cellPos(e); if(!start) return; dragging=true;
+    highlight([[start.r,start.c]]); e.preventDefault();
+  }
+  function pointerMove(e){
+    if(!dragging) return;
+    var p=cellPos(e); if(!p) return;
+    var cells=lineCells(start,p); highlight(cells); e.preventDefault();
+  }
+  function pointerUp(e){
+    if(!dragging) return; dragging=false;
+    var p=cellPos(e); highlight(null);
+    if(!start||!p) return;
+    var cells=lineCells(start,p); if(!cells) return;
+    var str="";
+    cells.forEach(function([r,c]){ str+=letters[idx(r,c)]; });
+    var rev=str.split("").reverse().join("");
+    for(var i=0;i<WORDS.length;i++){
+      var w=WORDS[i];
+      if(foundSet[w]) continue;
+      if(str===w||rev===w){ markFound(w); break; }
+    }
+  }
+  function markFound(w){
+    foundSet[w]=true;
+    placements[w].forEach(function([r,c]){ gridEl.children[idx(r,c)].classList.add("found"); });
+    var el=wordsEl.querySelector('[data-w="'+w+'"]'); if(el) el.classList.add("done");
+    foundEl.textContent=Object.keys(foundSet).length;
+    if(Object.keys(foundSet).length===WORDS.length){
+      if(timer) clearInterval(timer); timer=null;
+      setTimeout(function(){ alert("All words found in "+secs+"s!"); }, 60);
+    }
+  }
+  function newGame(){
+    build(); foundSet={}; secs=0; timeEl.textContent="0s"; started=false; dragging=false;
+    if(timer) clearInterval(timer); timer=null;
+    render();
+    wordsEl.innerHTML = WORDS.map(function(w){ return '<span class="w" data-w="'+w+'">'+w+'</span>'; }).join("");
+    foundEl.textContent="0"; totalEl.textContent=WORDS.length;
+  }
+  gridEl.addEventListener("pointerdown", pointerDown);
+  gridEl.addEventListener("pointermove", pointerMove);
+  window.addEventListener("pointerup", pointerUp);
+  document.getElementById("new").addEventListener("click", newGame);
+  newGame();
+})();
+</script>
+</body>
+</html>

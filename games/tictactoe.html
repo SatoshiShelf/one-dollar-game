@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Tic-Tac-Toe AI</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  #app{width:min(96vw,420px);padding:12px}
+  .score{display:flex;justify-content:space-between;gap:8px;margin-bottom:12px;font-size:12px;color:#98a2b3}
+  .score .box{flex:1;text-align:center;background:#14171f;border:1px solid #242a35;border-radius:10px;padding:8px 4px}
+  .score .box b{display:block;font-size:20px;color:#eef1f5;margin-top:2px}
+  .score .you b{color:#f7931a}
+  .score .cpu b{color:#38bdf8}
+  .status{text-align:center;font-size:15px;font-weight:600;margin-bottom:12px;min-height:22px}
+  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .cell{aspect-ratio:1/1;display:grid;place-items:center;font-size:clamp(34px,12vw,60px);font-weight:800;
+    background:linear-gradient(180deg,#14171f,#10131a);border:1px solid #242a35;border-radius:14px;
+    cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+  .cell:hover{background:#191d26;border-color:#333b48}
+  .cell:active{transform:scale(.97)}
+  .cell.x{color:#f7931a}
+  .cell.o{color:#38bdf8}
+  .cell.win{border-color:#22c55e;background:rgba(34,197,94,.14)}
+  .cell.done{cursor:default}
+  .foot{margin-top:14px;text-align:center}
+  .foot button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:11px 22px;cursor:pointer}
+  .foot .note{color:#6b7480;font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="score">
+    <div class="box you">You (X)<b id="sYou">0</b></div>
+    <div class="box">Draws<b id="sDraw">0</b></div>
+    <div class="box cpu">CPU (O)<b id="sCpu">0</b></div>
+  </div>
+  <div class="status" id="status">Your move — you are X</div>
+  <div class="board" id="board"></div>
+  <div class="foot">
+    <button id="reset">New round</button>
+    <div class="note">The CPU plays perfectly. A draw is a win.</div>
+  </div>
+</div>
+<script>
+(function(){
+  var board=document.getElementById("board"), statusEl=document.getElementById("status");
+  var sYou=document.getElementById("sYou"), sDraw=document.getElementById("sDraw"), sCpu=document.getElementById("sCpu");
+  var LINES=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  var state, locked, tally={you:0,draw:0,cpu:0};
+  var HUMAN="X", CPU="O";
+
+  try { var t=JSON.parse(localStorage.getItem("ttt_tally")||"null"); if(t) tally=t; } catch(e){}
+  function saveTally(){ try{ localStorage.setItem("ttt_tally", JSON.stringify(tally)); }catch(e){} }
+
+  function winner(b){
+    for(var i=0;i<LINES.length;i++){
+      var L=LINES[i];
+      if(b[L[0]] && b[L[0]]===b[L[1]] && b[L[1]]===b[L[2]]) return {who:b[L[0]], line:L};
+    }
+    return b.indexOf("")<0 ? {who:"draw", line:null} : null;
+  }
+  function minimax(b, player){
+    var w=winner(b);
+    if(w){ if(w.who===CPU) return {score:1}; if(w.who===HUMAN) return {score:-1}; return {score:0}; }
+    var best=null;
+    for(var i=0;i<9;i++){
+      if(b[i]) continue;
+      b[i]=player;
+      var r=minimax(b, player===CPU?HUMAN:CPU);
+      b[i]="";
+      var score=r.score;
+      if(!best || (player===CPU ? score>best.score : score<best.score)) best={score:score, move:i};
+    }
+    return best;
+  }
+  function render(){
+    board.innerHTML="";
+    for(var i=0;i<9;i++){
+      (function(i){
+        var d=document.createElement("div");
+        d.className="cell"+(state[i]==="X"?" x":"")+(state[i]==="O"?" o":"");
+        d.textContent=state[i];
+        d.addEventListener("click", function(){ human(i); });
+        board.appendChild(d);
+      })(i);
+    }
+  }
+  function highlight(line){
+    var cells=board.children;
+    line.forEach(function(i){ cells[i].classList.add("win"); });
+  }
+  function finish(w){
+    locked=true;
+    Array.prototype.forEach.call(board.children, function(c){ c.classList.add("done"); });
+    if(w.who===HUMAN){ statusEl.textContent="You win! (You found the flaw.)"; tally.you++; }
+    else if(w.who===CPU){ statusEl.textContent="CPU wins. Try again."; tally.cpu++; }
+    else { statusEl.textContent="Draw. Perfect play."; tally.draw++; }
+    if(w.line) highlight(w.line);
+    sYou.textContent=tally.you; sDraw.textContent=tally.draw; sCpu.textContent=tally.cpu;
+    saveTally();
+  }
+  function human(i){
+    if(locked || state[i]) return;
+    state[i]=HUMAN;
+    syncCell(i);
+    var w=winner(state);
+    if(w){ finish(w); return; }
+    locked=true; statusEl.textContent="CPU thinking\u2026";
+    setTimeout(function(){
+      var m=minimax(state.slice(), CPU).move;
+      state[m]=CPU;
+      syncCell(m);
+      var w2=winner(state);
+      if(w2){ finish(w2); return; }
+      locked=false; statusEl.textContent="Your move";
+    }, 260);
+  }
+  function syncCell(i){
+    var d=board.children[i];
+    d.className="cell"+(state[i]==="X"?" x":"")+(state[i]==="O"?" o":"");
+    d.textContent=state[i];
+  }
+  function reset(){
+    state=["","","","","","","","",""];
+    locked=false; statusEl.textContent="Your move — you are X";
+    sYou.textContent=tally.you; sDraw.textContent=tally.draw; sCpu.textContent=tally.cpu;
+    render();
+  }
+  document.getElementById("reset").addEventListener("click", reset);
+  reset();
+})();
+</script>
+</body>
+</html>

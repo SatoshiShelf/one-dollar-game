@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Minefield</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;
+    border-radius:10px;background:#05070a;box-shadow:0 12px 40px -12px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<canvas id="c" width="340" height="392"></canvas>
+<script>
+(function(){
+  var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+  var COLS=10, ROWS=10, MINES=15, CELL=34, OX=0, OY=52;
+  var W=COLS*CELL, H=OY+ROWS*CELL;
+  var cells, state, flagMode, secs, started, timer, firstClick;
+  var NUMC=["","#38bdf8","#22c55e","#f7931a","#a855f7","#ef4444","#14b8a6","#eef1f5","#98a2b3"];
+
+  function idx(r,c){ return r*COLS+c; }
+  function reset(){
+    cells=[]; for(var i=0;i<COLS*ROWS;i++) cells.push({mine:false,rev:false,flag:false,n:0});
+    state="ready"; flagMode=false; secs=0; started=false; firstClick=true;
+    if(timer){ clearInterval(timer); timer=null; }
+  }
+  function neighbors(r,c){
+    var out=[];
+    for(var dr=-1;dr<=1;dr++) for(var dc=-1;dc<=1;dc++){
+      if(dr===0&&dc===0) continue;
+      var nr=r+dr, nc=c+dc;
+      if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS) out.push([nr,nc]);
+    }
+    return out;
+  }
+  function placeMines(sr,sc){
+    var safe={}; safe[idx(sr,sc)]=1; neighbors(sr,sc).forEach(function(p){ safe[idx(p[0],p[1])]=1; });
+    var spots=[];
+    for(var i=0;i<COLS*ROWS;i++) if(!safe[i]) spots.push(i);
+    for(var k=spots.length-1;k>0;k--){ var j=(Math.random()*(k+1))|0; var t=spots[k];spots[k]=spots[j];spots[j]=t; }
+    for(var m=0;m<MINES;m++) cells[spots[m]].mine=true;
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++){
+      var n=0; neighbors(r,c).forEach(function(p){ if(cells[idx(p[0],p[1])].mine) n++; });
+      cells[idx(r,c)].n=n;
+    }
+  }
+  function startTimer(){
+    if(started) return; started=true;
+    timer=setInterval(function(){ secs++; draw(); },1000);
+  }
+  function reveal(r,c){
+    var cell=cells[idx(r,c)];
+    if(state==="won"||state==="lost"||cell.rev||cell.flag) return;
+    if(firstClick){ placeMines(r,c); firstClick=false; state="play"; startTimer(); }
+    var stack=[[r,c]], count=0;
+    while(stack.length){
+      var p=stack.pop(), q=cells[idx(p[0],p[1])];
+      if(q.rev||q.flag) continue;
+      q.rev=true;
+      if(q.mine){ lose(); return; }
+      if(q.n===0) neighbors(p[0],p[1]).forEach(function(np){ if(!cells[idx(np[0],np[1])].rev) stack.push(np); });
+    }
+    checkWin();
+  }
+  function toggleFlag(r,c){
+    var cell=cells[idx(r,c)];
+    if(state==="won"||state==="lost"||cell.rev) return;
+    cell.flag=!cell.flag;
+  }
+  function flagsUsed(){ return cells.filter(function(c){return c.flag;}).length; }
+  function checkWin(){
+    var safeRev=0;
+    for(var i=0;i<COLS*ROWS;i++) if(cells[i].rev && !cells[i].mine) safeRev++;
+    if(safeRev===COLS*ROWS-MINES){
+      state="won";
+      if(timer){ clearInterval(timer); timer=null; }
+    }
+  }
+  function lose(){
+    state="lost";
+    if(timer){ clearInterval(timer); timer=null; }
+    for(var i=0;i<COLS*ROWS;i++) if(cells[i].mine) cells[i].rev=true;
+  }
+  function cellAt(clientX,clientY){
+    var r=cv.getBoundingClientRect();
+    var x=(clientX-r.left)*W/r.width, y=(clientY-r.top)*H/r.height;
+    if(x<0||y<OY||x>=W||y>=H) return null;
+    return [Math.floor((y-OY)/CELL), Math.floor(x/CELL)];
+  }
+  function inBtn(clientX,clientY,region){
+    var r=cv.getBoundingClientRect();
+    var x=(clientX-r.left)*W/r.width, y=(clientY-r.top)*H/r.height;
+    return x>=region[0]&&x<=region[2]&&y>=region[1]&&y<=region[3];
+  }
+  function drawBtn(x,y,w,h,label,active){
+    ctx.fillStyle=active? "#f7931a" : "#14171f";
+    ctx.strokeStyle="#242a35"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.roundRect(x,y,w,h,8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=active? "#201400" : "#eef1f5";
+    ctx.font="600 13px Inter, Arial"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(label, x+w/2, y+h/2+1);
+    ctx.textBaseline="alphabetic";
+  }
+  function draw(){
+    ctx.fillStyle="#05070a"; ctx.fillRect(0,0,W,H);
+    drawBtn(6,8,64,32,"New");
+    drawBtn(W-74,8,68,32,flagMode?"Flag ON":"Flag",flagMode);
+    ctx.textAlign="center"; ctx.fillStyle="#98a2b3"; ctx.font="600 13px Inter, Arial";
+    ctx.fillText("\uD83D\uDCA3 "+(MINES-flagsUsed())+"      \u23F1 "+secs+"s", W/2, 29);
+
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++){
+      var cell=cells[idx(r,c)];
+      var x=c*CELL, y=OY+r*CELL;
+      if(!cell.rev){
+        ctx.fillStyle="#1b2029"; ctx.beginPath(); ctx.roundRect(x+1,y+1,CELL-2,CELL-2,5); ctx.fill();
+        ctx.fillStyle="rgba(255,255,255,.06)"; ctx.beginPath(); ctx.roundRect(x+1,y+1,CELL-2,5,3); ctx.fill();
+        if(cell.flag){ ctx.fillStyle="#ef4444"; ctx.textAlign="center"; ctx.font="16px Inter, Arial"; ctx.fillText("\u2691", x+CELL/2, y+CELL/2+6); }
+      } else {
+        ctx.fillStyle=cell.mine?"#3a1414":"#12151b";
+        ctx.beginPath(); ctx.roundRect(x+1,y+1,CELL-2,CELL-2,5); ctx.fill();
+        if(cell.mine){
+          ctx.fillStyle="#ef4444"; ctx.textAlign="center"; ctx.font="16px Inter, Arial"; ctx.fillText("\uD83D\uDCA3", x+CELL/2, y+CELL/2+6);
+        } else if(cell.n>0){
+          ctx.fillStyle=NUMC[cell.n]; ctx.textAlign="center"; ctx.font="700 16px Inter, Arial";
+          ctx.fillText(cell.n, x+CELL/2, y+CELL/2+6);
+        }
+      }
+    }
+    if(state==="lost"||state==="won"){
+      ctx.fillStyle="rgba(5,7,10,.82)"; ctx.fillRect(0,OY,W,H-OY);
+      ctx.textAlign="center";
+      ctx.fillStyle=state==="won"?"#22c55e":"#ef4444"; ctx.font="800 30px Inter, Arial";
+      ctx.fillText(state==="won"?"Minefield cleared!":"Boom!", W/2, OY+(H-OY)/2-16);
+      ctx.fillStyle="#eef1f5"; ctx.font="600 15px Inter, Arial";
+      ctx.fillText("Time "+secs+"s \u00b7 tap New to play again", W/2, OY+(H-OY)/2+18);
+    }
+  }
+  // desktop
+  cv.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  cv.addEventListener("mousedown", function(e){
+    if(inBtn(e.clientX,e.clientY,[6,8,70,40])){ reset(); draw(); return; }
+    if(inBtn(e.clientX,e.clientY,[W-74,8,W-6,40])){ flagMode=!flagMode; draw(); return; }
+    var p=cellAt(e.clientX,e.clientY); if(!p) return;
+    if(e.button===2 || flagMode) toggleFlag(p[0],p[1]); else reveal(p[0],p[1]);
+    draw();
+  });
+  // touch
+  var touchStart=0, touchMoved=false;
+  cv.addEventListener("touchstart", function(e){
+    touchStart=Date.now(); touchMoved=false;
+    var t=e.touches[0];
+    if(inBtn(t.clientX,t.clientY,[6,8,70,40])){ e.preventDefault(); reset(); draw(); }
+  }, {passive:false});
+  cv.addEventListener("touchmove", function(){ touchMoved=true; }, {passive:true});
+  cv.addEventListener("touchend", function(e){
+    var t=e.changedTouches[0];
+    if(inBtn(t.clientX,t.clientY,[6,8,70,40])) return;
+    if(inBtn(t.clientX,t.clientY,[W-74,8,W-6,40])){ flagMode=!flagMode; draw(); return; }
+    var p=cellAt(t.clientX,t.clientY); if(!p) return;
+    var held=Date.now()-touchStart;
+    if(held>420 || flagMode) toggleFlag(p[0],p[1]); else reveal(p[0],p[1]);
+    draw();
+  }, {passive:true});
+
+  reset(); draw();
+})();
+</script>
+</body>
+</html>

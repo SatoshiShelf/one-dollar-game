@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Doodle Jump</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;overflow:hidden;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center;touch-action:none}
+  #wrap{position:relative;height:min(96vh,760px);aspect-ratio:9/16}
+  canvas{display:block;width:100%;height:100%;background:#0d1017;border:1px solid #242a35;border-radius:14px}
+  .hud{position:absolute;top:10px;left:14px;font-size:14px;color:#98a2b3;font-weight:600;pointer-events:none}
+  .hud b{color:#eef1f5;font-size:18px}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;
+    background:rgba(5,7,10,.86);border-radius:14px;padding:16px}
+  .overlay.show{display:grid}
+  .overlay h2{margin:0 0 6px;font-size:30px;color:#22c55e}
+  .overlay p{margin:0 0 14px;color:#98a2b3;font-size:14px}
+  .overlay button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:12px 22px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="360" height="640"></canvas>
+  <div class="hud">Height <b id="score">0</b></div>
+  <div class="overlay" id="overlay">
+    <div>
+      <h2 id="ovTitle">Doodle Jump</h2>
+      <p id="ovSub">Left / Right arrows (or A / D) to move. Bounce forever.</p>
+      <button id="ovBtn">Play</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var scoreEl=document.getElementById("score"), overlay=document.getElementById("overlay"),
+      ovTitle=document.getElementById("ovTitle"), ovSub=document.getElementById("ovSub"), ovBtn=document.getElementById("ovBtn");
+  var GRAV=0.32, JUMP=-11.4, MOVE=0.9, MAXVX=6.2;
+  var player, platforms, highestY, keys, state, score, best=+(localStorage.getItem("doodle_best")||0);
+
+  function rnd(a,b){ return a+Math.random()*(b-a); }
+  function makePlatform(x,y,type){ return {x:x,y:y,w:64,h:12,type:type||"static",vx:(Math.random()<.5?-1:1)*rnd(0.6,1.4)}; }
+  function addPlatformAbove(){
+    var type = "static";
+    if(score>600 && Math.random()<0.22) type="moving";
+    else if(score>300 && Math.random()<0.16) type="break";
+    var gap = rnd(60, 92 + Math.min(70, score/60));
+    highestY -= gap;
+    platforms.push(makePlatform(rnd(10, W-74), highestY, type));
+  }
+  function reset(){
+    player={x:W/2-16, y:H-120, w:32, h:32, vx:0, vy:JUMP};
+    platforms=[];
+    highestY=H-40;
+    platforms.push(makePlatform(player.x-16, player.y+40, "static"));
+    for(var i=0;i<8;i++) addPlatformAbove();
+    score=0; scoreEl.textContent="0";
+    state="play";
+    overlay.classList.remove("show");
+  }
+  function gameOver(){
+    state="over";
+    var h=Math.round(score);
+    if(h>best){ best=h; localStorage.setItem("doodle_best",best); }
+    ovTitle.textContent="Game over";
+    ovSub.textContent="Height "+h+"  ·  best "+Math.round(best);
+    ovBtn.textContent="Play again";
+    overlay.classList.add("show");
+  }
+
+  function update(){
+    if(state!=="play") return;
+    var p=player;
+    if(keys.left) p.vx-=MOVE;
+    if(keys.right) p.vx+=MOVE;
+    if(!keys.left && !keys.right) p.vx*=0.9;
+    p.vx=Math.max(-MAXVX, Math.min(MAXVX, p.vx));
+    p.x+=p.vx;
+    if(p.x<-p.w) p.x=W;
+    if(p.x>W) p.x=-p.w;
+
+    p.vy+=GRAV;
+    if(p.vy>16) p.vy=16;
+    p.y+=p.vy;
+
+    if(p.vy>0){
+      for(var i=0;i<platforms.length;i++){
+        var q=platforms[i];
+        var prevBottom=p.y+p.h-p.vy;
+        var bottom=p.y+p.h;
+        if(prevBottom<=q.y+2 && bottom>=q.y && p.x+p.w>q.x+4 && p.x<q.x+q.w-4){
+          if(q.type==="break"){ q.dead=true; }
+          else { p.vy=JUMP; if(q.type==="moving") p.x+=q.vx*6; }
+          break;
+        }
+      }
+    }
+
+    if(p.y < H*0.42){
+      var d=H*0.42-p.y;
+      p.y=H*0.42;
+      for(var j=0;j<platforms.length;j++) platforms[j].y+=d;
+      highestY+=d;
+      score+=d;
+      scoreEl.textContent=Math.round(score);
+    }
+
+    var top=H+40, kept=[];
+    for(var k=0;k<platforms.length;k++){
+      var pl=platforms[k];
+      if(pl.type==="moving"){ pl.x+=pl.vx; if(pl.x<0||pl.x+pl.w>W) pl.vx*=-1; }
+      if(pl.dead) continue;
+      if(pl.y<H+40) kept.push(pl);
+    }
+    platforms=kept;
+    while(highestY > -20) addPlatformAbove();
+
+    if(p.y>H+60) gameOver();
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    var g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#0d1017"); g.addColorStop(1,"#0a0c10");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    for(var i=0;i<platforms.length;i++){
+      var q=platforms[i];
+      var col = q.type==="moving" ? "#38bdf8" : (q.type==="break" ? "#a3671f" : "#22c55e");
+      ctx.fillStyle=col;
+      roundRect(q.x,q.y,q.w,q.h,6); ctx.fill();
+      ctx.fillStyle="rgba(255,255,255,.18)";
+      roundRect(q.x,q.y,q.w,4,3); ctx.fill();
+    }
+    var p=player;
+    ctx.fillStyle="#f7931a";
+    roundRect(p.x,p.y,p.w,p.h,10); ctx.fill();
+    ctx.fillStyle="#0a0c10";
+    ctx.beginPath(); ctx.arc(p.x+10,p.y+12,3,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x+22,p.y+12,3,0,7); ctx.fill();
+    ctx.strokeStyle="#0a0c10"; ctx.lineWidth=2; ctx.beginPath();
+    ctx.arc(p.x+16,p.y+18,6,0,Math.PI); ctx.stroke();
+  }
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+
+  keys={left:false,right:false};
+  addEventListener("keydown", function(e){
+    if(["ArrowLeft","a","A"].indexOf(e.key)>=0) keys.left=true;
+    if(["ArrowRight","d","D"].indexOf(e.key)>=0) keys.right=true;
+    if(e.key===" " && state!=="play") reset();
+    if(e.key==="ArrowLeft"||e.key==="ArrowRight") e.preventDefault();
+  });
+  addEventListener("keyup", function(e){
+    if(["ArrowLeft","a","A"].indexOf(e.key)>=0) keys.left=false;
+    if(["ArrowRight","d","D"].indexOf(e.key)>=0) keys.right=false;
+  });
+  function pointer(e, on){
+    var r=cv.getBoundingClientRect();
+    var x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+    keys.left = on && x < r.width/2;
+    keys.right = on && x >= r.width/2;
+  }
+  cv.addEventListener("pointerdown", function(e){ pointer(e,true); });
+  cv.addEventListener("pointermove", function(e){ if(e.buttons||e.pointerType==="touch") pointer(e,true); });
+  addEventListener("pointerup", function(){ keys.left=keys.right=false; });
+  ovBtn.addEventListener("click", reset);
+
+  reset();
+  (function loop(){ update(); draw(); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

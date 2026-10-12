@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Free game — One Dollar Game</title>
+<meta name="description" content="Play a full game free in your browser. No payment, no signup. Then browse 25 games for $1 each.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23f7931a'/><text x='50' y='72' font-size='60' text-anchor='middle' fill='%23201400' font-family='Arial' font-weight='bold'>$1</text></svg>">
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="mark">$1</span> One Dollar Game</a>
+    <nav class="site"><a href="index.html#games">All games</a><a class="cta" href="index.html#games">Browse $1 games</a></nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dotlive"></span> 100% free &middot; no signup</div>
+    <h1>Play a full game.<br><span class="grad">On the house.</span></h1>
+    <p class="sub">Here's one of the games, completely free, right in your browser. If you enjoy it, the other 24 are one dollar each.</p>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="playwrap" style="margin-top:8px">
+    <iframe id="demo" title="Free game" src="games/reaction.html" loading="lazy"></iframe>
+    <div class="playnote" id="playnote">Loading the game&hellip;</div>
+  </div>
+
+  <div class="section-head" style="margin:46px 0 22px">
+    <span class="kicker">Liked it?</span>
+    <h2>Own 24 more for $1 each</h2>
+    <p>Pay with Bitcoin, Litecoin, Ethereum, USDT or USDC. Each purchase includes the offline game and its Python source.</p>
+    <div class="actions" style="margin-top:18px">
+      <a class="btn" href="index.html#games">Browse all games</a>
+    </div>
+  </div>
+</div>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="fine" style="border-top:none;margin-top:0;padding-top:0">
+      &copy; <span id="year"></span> One Dollar Game &middot; All sales final
+    </div>
+  </div>
+</footer>
+
+<script>
+document.getElementById("year").textContent = new Date().getFullYear();
+const frame = document.getElementById("demo");
+frame.addEventListener("load", () => { const n = document.getElementById("playnote"); if (n) n.remove(); });
+</script>
+</body>
+</html>

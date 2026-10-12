@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Asteroids</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;overflow:hidden;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  #wrap{position:relative;width:min(96vw,860px)}
+  canvas{display:block;width:100%;height:auto;background:#0d1017;border:1px solid #242a35;border-radius:14px;touch-action:none}
+  .hud{position:absolute;top:10px;left:14px;right:14px;display:flex;justify-content:space-between;
+    font-size:14px;color:#98a2b3;font-weight:600;pointer-events:none}
+  .hud b{color:#eef1f5;font-size:18px}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;
+    background:rgba(5,7,10,.86);border-radius:14px;padding:16px}
+  .overlay.show{display:grid}
+  .overlay h2{margin:0 0 6px;font-size:30px;color:#f7931a}
+  .overlay p{margin:0 0 14px;color:#98a2b3;font-size:14px;line-height:1.6}
+  .overlay button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:12px 22px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="860" height="580"></canvas>
+  <div class="hud"><span>Score <b id="score">0</b></span><span>Lives <b id="lives">3</b></span></div>
+  <div class="overlay show" id="overlay">
+    <div>
+      <h2 id="ovTitle">ASTEROIDS</h2>
+      <p id="ovSub">&#8592; &#8594; rotate &nbsp;·&nbsp; &#8593; thrust &nbsp;·&nbsp; Space fire<br>Blast the rocks. Big ones split into smaller ones.</p>
+      <button id="ovBtn">Play</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var scoreEl=document.getElementById("score"), livesEl=document.getElementById("lives"),
+      overlay=document.getElementById("overlay"), ovTitle=document.getElementById("ovTitle"),
+      ovSub=document.getElementById("ovSub"), ovBtn=document.getElementById("ovBtn");
+  var ship, bullets, rocks, parts, keys, state, score, lives, invuln, best=+(localStorage.getItem("ast_best")||0);
+
+  function rnd(a,b){ return a+Math.random()*(b-a); }
+  function wrap(o, r){ if(o.x<-r)o.x=W+r; if(o.x>W+r)o.x=-r; if(o.y<-r)o.y=H+r; if(o.y>H+r)o.y=-r; }
+  function makeRock(x,y,size){
+    var R = size===3?54:size===2?32:18;
+    var n=8+((Math.random()*4)|0), shape=[];
+    for(var i=0;i<n;i++) shape.push(rnd(0.72,1.12));
+    return {x:x,y:y,vx:rnd(-1.1,1.1)+ (Math.random()<.5?-0.5:0.5), vy:rnd(-1.1,1.1), size:size, r:R, shape:shape, rot:rnd(0,7), vr:rnd(-0.03,0.03)};
+  }
+  function start(){
+    ship={x:W/2,y:H/2,a:-Math.PI/2,vx:0,vy:0};
+    bullets=[]; parts=[]; rocks=[]; score=0; lives=3; invuln=0; state="play";
+    for(var i=0;i<4;i++){
+      var x,y;
+      do { x=rnd(0,W); y=rnd(0,H); } while(Math.hypot(x-ship.x,y-ship.y)<180);
+      rocks.push(makeRock(x,y,3));
+    }
+    scoreEl.textContent="0"; livesEl.textContent="3";
+    overlay.classList.remove("show");
+  }
+  function gameOver(){
+    state="over";
+    if(score>best){ best=score; localStorage.setItem("ast_best",best); }
+    ovTitle.textContent="Game over";
+    ovSub.textContent="Score "+score+"  ·  best "+best;
+    ovBtn.textContent="Play again";
+    overlay.classList.add("show");
+  }
+
+  function shoot(){
+    if(bullets.length>=6) return;
+    bullets.push({x:ship.x+Math.cos(ship.a)*16, y:ship.y+Math.sin(ship.a)*16, vx:Math.cos(ship.a)*7.2, vy:Math.sin(ship.a)*7.2, t:70});
+  }
+  function boom(x,y){
+    for(var i=0;i<10;i++) parts.push({x:x,y:y,vx:rnd(-3,3),vy:rnd(-3,3),t:rnd(14,30)});
+  }
+
+  function update(){
+    if(state!=="play") return;
+    if(invuln>0) invuln--;
+    if(keys.left) ship.a-=0.075;
+    if(keys.right) ship.a+=0.075;
+    if(keys.thrust){ ship.vx+=Math.cos(ship.a)*0.16; ship.vy+=Math.sin(ship.a)*0.16; }
+    ship.vx*=0.992; ship.vy*=0.992;
+    var sp=Math.hypot(ship.vx,ship.vy);
+    if(sp>8){ ship.vx*=8/sp; ship.vy*=8/sp; }
+    ship.x+=ship.vx; ship.y+=ship.vy;
+    if(ship.x<0)ship.x=W; if(ship.x>W)ship.x=0; if(ship.y<0)ship.y=H; if(ship.y>H)ship.y=0;
+
+    for(var i=bullets.length-1;i>=0;i--){
+      var b=bullets[i]; b.x+=b.vx; b.y+=b.vy; b.t--;
+      if(b.t<=0){ bullets.splice(i,1); continue; }
+      if(b.x<0)b.x=W; if(b.x>W)b.x=0; if(b.y<0)b.y=H; if(b.y>H)b.y=0;
+    }
+    for(var i=rocks.length-1;i>=0;i--){
+      var r=rocks[i]; r.x+=r.vx; r.y+=r.vy; r.rot+=r.vr; wrap(r,r.r);
+    }
+    for(var i=parts.length-1;i>=0;i--){
+      var p=parts[i]; p.x+=p.vx; p.y+=p.vy; p.t--; if(p.t<=0) parts.splice(i,1);
+    }
+    for(var i=bullets.length-1;i>=0;i--){
+      var b=bullets[i];
+      for(var j=rocks.length-1;j>=0;j--){
+        var r=rocks[j];
+        if(Math.hypot(b.x-r.x,b.y-r.y) < r.r){
+          bullets.splice(i,1);
+          rocks.splice(j,1);
+          boom(r.x,r.y);
+          score += r.size===3?20:r.size===2?50:100;
+          scoreEl.textContent=score;
+          if(r.size>1){ rocks.push(makeRock(r.x,r.y,r.size-1)); rocks.push(makeRock(r.x,r.y,r.size-1)); }
+          break;
+        }
+      }
+    }
+    if(invuln<=0){
+      for(var j=0;j<rocks.length;j++){
+        var r=rocks[j];
+        if(Math.hypot(ship.x-r.x,ship.y-r.y) < r.r+11){
+          boom(ship.x,ship.y);
+          lives--; livesEl.textContent=lives;
+          if(lives<=0){ gameOver(); return; }
+          ship.x=W/2; ship.y=H/2; ship.vx=0; ship.vy=0; ship.a=-Math.PI/2; invuln=110;
+          break;
+        }
+      }
+    }
+    if(rocks.length===0){
+      for(var i=0;i<4+Math.min(4,Math.floor(score/400));i++){
+        var x,y;
+        do { x=rnd(0,W); y=rnd(0,H); } while(Math.hypot(x-ship.x,y-ship.y)<200);
+        rocks.push(makeRock(x,y,3));
+      }
+    }
+  }
+
+  function drawShip(){
+    if(invuln>0 && (invuln>>2)%2) return;
+    ctx.save(); ctx.translate(ship.x,ship.y); ctx.rotate(ship.a);
+    ctx.strokeStyle="#eef1f5"; ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(16,0); ctx.lineTo(-10,-9); ctx.lineTo(-5,0); ctx.lineTo(-10,9); ctx.closePath(); ctx.stroke();
+    if(keys.thrust){
+      ctx.strokeStyle="#f7931a"; ctx.beginPath();
+      ctx.moveTo(-6,-4); ctx.lineTo(-15-Math.random()*6,0); ctx.lineTo(-6,4); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function drawRock(r){
+    ctx.save(); ctx.translate(r.x,r.y); ctx.rotate(r.rot);
+    ctx.strokeStyle="#c3cad6"; ctx.lineWidth=2; ctx.beginPath();
+    var n=r.shape.length;
+    for(var i=0;i<n;i++){
+      var ang=i/n*Math.PI*2, rad=r.r*r.shape[i];
+      var x=Math.cos(ang)*rad, y=Math.sin(ang)*rad;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath(); ctx.stroke(); ctx.restore();
+  }
+  function draw(){
+    ctx.fillStyle="#0d1017"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#fff";
+    for(var i=0;i<bullets.length;i++){ ctx.beginPath(); ctx.arc(bullets[i].x,bullets[i].y,2.5,0,7); ctx.fill(); }
+    ctx.fillStyle="#f7931a";
+    for(var i=0;i<parts.length;i++){ ctx.globalAlpha=Math.max(0,parts[i].t/28); ctx.fillRect(parts[i].x-1.5,parts[i].y-1.5,3,3); }
+    ctx.globalAlpha=1;
+    for(var i=0;i<rocks.length;i++) drawRock(rocks[i]);
+    if(state!=="over") drawShip();
+  }
+
+  keys={left:false,right:false,thrust:false};
+  function setKey(e,on){
+    var k=e.key;
+    if(k==="ArrowLeft"||k==="a"||k==="A") keys.left=on;
+    if(k==="ArrowRight"||k==="d"||k==="D") keys.right=on;
+    if(k==="ArrowUp"||k==="w"||k==="W") keys.thrust=on;
+    if(k===" "){ if(on && state==="play") shoot(); else if(!on && state!=="play") start(); e.preventDefault(); }
+    if(k==="ArrowLeft"||k==="ArrowRight"||k==="ArrowUp"||k==="ArrowDown") e.preventDefault();
+  }
+  addEventListener("keydown", function(e){ setKey(e,true); });
+  addEventListener("keyup", function(e){ setKey(e,false); });
+  var touch=null;
+  cv.addEventListener("pointerdown", function(e){ if(state!=="play"){ start(); return; } touch={x:e.clientX,y:e.clientY,t:Date.now()}; });
+  cv.addEventListener("pointerup", function(e){ if(touch){ if(Date.now()-touch.t<220) shoot(); touch=null; } });
+  ovBtn.addEventListener("click", start);
+
+  start();
+  (function loop(){ update(); draw(); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

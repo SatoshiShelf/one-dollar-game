@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Sokoban</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;overflow:hidden;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  #wrap{position:relative;width:min(96vw,720px);height:min(94vh,720px)}
+  canvas{display:block;width:100%;height:100%;background:#0d1017;border:1px solid #242a35;border-radius:14px;touch-action:none}
+  .hud{position:absolute;top:10px;left:14px;right:14px;display:flex;justify-content:space-between;
+    font-size:13px;color:#98a2b3;font-weight:600;pointer-events:none}
+  .hud b{color:#eef1f5}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;
+    background:rgba(5,7,10,.86);border-radius:14px;padding:16px}
+  .overlay.show{display:grid}
+  .overlay h2{margin:0 0 6px;font-size:28px;color:#22c55e}
+  .overlay p{margin:0 0 14px;color:#98a2b3;font-size:14px}
+  .overlay button{background:linear-gradient(140deg,#f7931a,#ffc266);border:none;color:#201400;
+    font-weight:700;font-size:15px;font-family:inherit;border-radius:11px;padding:12px 22px;cursor:pointer}
+  .keys{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:#6b7480}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="720" height="720"></canvas>
+  <div class="hud"><span>Level <b id="lvl">1</b></span><span>Moves <b id="moves">0</b></span></div>
+  <div class="keys">Arrows / WASD move &nbsp;·&nbsp; U undo &nbsp;·&nbsp; R restart</div>
+  <div class="overlay" id="overlay">
+    <div>
+      <h2 id="ovTitle">Solved!</h2>
+      <p id="ovSub"></p>
+      <button id="ovBtn">Next</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var lvlEl=document.getElementById("lvl"), movesEl=document.getElementById("moves"),
+      overlay=document.getElementById("overlay"), ovTitle=document.getElementById("ovTitle"),
+      ovSub=document.getElementById("ovSub"), ovBtn=document.getElementById("ovBtn");
+
+  var LEVELS = [
+    "#######\n#     #\n# @$. #\n#     #\n#######",
+    "#######\n#  .  #\n#  $  #\n#  @  #\n#######",
+    "########\n#      #\n# $  . #\n#  @   #\n#      #\n########",
+    "#########\n#       #\n#  $ $  #\n#  . .  #\n#   @   #\n#########",
+    "##########\n#        #\n#  $   . #\n#  $   . #\n#   @    #\n##########",
+    "##########\n#        #\n#  $  $  #\n#        #\n#  .  .  #\n#   @    #\n##########"
+  ];
+
+  var walls, targets, boxes, player, rows, cols, level, moves, history, solved;
+
+  function parse(str){
+    var lines=str.split("\n");
+    rows=lines.length; cols=0;
+    for(var i=0;i<lines.length;i++) cols=Math.max(cols,lines[i].length);
+    walls=[]; targets=[]; boxes={}; player={r:0,c:0};
+    for(var r=0;r<rows;r++){
+      walls.push([]); targets.push([]);
+      for(var c=0;c<cols;c++){
+        var ch=lines[r][c]||" ";
+        walls[r].push(ch==="#");
+        targets[r].push(ch==="."||ch==="*"||ch==="+");
+        if(ch==="$"||ch==="*") boxes[r+","+c]=true;
+        if(ch==="@"||ch==="+") player={r:r,c:c};
+      }
+    }
+  }
+  function loadLevel(i){
+    level=i; moves=0; history=[]; solved=false;
+    parse(LEVELS[i]);
+    movesEl.textContent="0"; lvlEl.textContent=(i+1);
+    overlay.classList.remove("show");
+  }
+  function isBox(r,c){ return !!boxes[r+","+c]; }
+  function isWall(r,c){ if(r<0||c<0||r>=rows||c>=cols) return true; return walls[r][c]; }
+  function allDone(){
+    for(var k in boxes){ var p=k.split(","); if(!targets[+p[0]][+p[1]]) return false; }
+    return Object.keys(boxes).length>0;
+  }
+  function move(dr,dc){
+    if(solved) return;
+    var nr=player.r+dr, nc=player.c+dc;
+    if(isWall(nr,nc)) return;
+    var snapshot={p:{r:player.r,c:player.c}, b:Object.assign({},boxes)};
+    if(isBox(nr,nc)){
+      var br=nr+dr, bc=nc+dc;
+      if(isWall(br,bc)||isBox(br,bc)) return;
+      delete boxes[nr+","+nc];
+      boxes[br+","+bc]=true;
+    }
+    player={r:nr,c:nc};
+    history.push(snapshot);
+    moves++; movesEl.textContent=moves;
+    if(allDone()){
+      solved=true;
+      ovTitle.textContent="Solved!";
+      ovSub.textContent="Level "+(level+1)+" cleared in "+moves+" moves.";
+      ovBtn.textContent = level<LEVELS.length-1 ? "Next level" : "Play again";
+      overlay.classList.add("show");
+    }
+  }
+  function undo(){
+    if(!history.length||solved) return;
+    var s=history.pop();
+    player=s.p; boxes=s.b; moves=Math.max(0,moves-1); movesEl.textContent=moves;
+  }
+
+  function draw(){
+    var cell=Math.min((W-60)/cols, (H-60)/rows);
+    var ox=(W-cell*cols)/2, oy=(H-cell*rows)/2;
+    ctx.fillStyle="#0d1017"; ctx.fillRect(0,0,W,H);
+    for(var r=0;r<rows;r++){
+      for(var c=0;c<cols;c++){
+        var x=ox+c*cell, y=oy+r*cell;
+        if(walls[r][c]){
+          ctx.fillStyle="#2a3140"; roundRect(x+1,y+1,cell-2,cell-2,5); ctx.fill();
+          ctx.fillStyle="#3a4456"; roundRect(x+1,y+1,cell-2,(cell-2)*0.35,5); ctx.fill();
+          continue;
+        }
+        ctx.fillStyle="#11141b"; roundRect(x+1,y+1,cell-2,cell-2,4); ctx.fill();
+        if(targets[r][c]){
+          ctx.fillStyle="#f7931a";
+          ctx.beginPath(); ctx.arc(x+cell/2,y+cell/2,cell*0.17,0,7); ctx.fill();
+        }
+      }
+    }
+    for(var k in boxes){
+      var p=k.split(","), r=+p[0], c=+p[1];
+      var x=ox+c*cell, y=oy+r*cell;
+      var on=targets[r][c];
+      ctx.fillStyle=on?"#22c55e":"#b9764a";
+      roundRect(x+cell*0.12,y+cell*0.12,cell*0.76,cell*0.76,6); ctx.fill();
+      ctx.strokeStyle="rgba(0,0,0,.3)"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x+cell*0.16,y+cell*0.16); ctx.lineTo(x+cell*0.84,y+cell*0.84);
+      ctx.moveTo(x+cell*0.84,y+cell*0.16); ctx.lineTo(x+cell*0.16,y+cell*0.84); ctx.stroke();
+    }
+    var px=ox+player.c*cell, py=oy+player.r*cell;
+    ctx.fillStyle="#ffc266";
+    roundRect(px+cell*0.16,py+cell*0.16,cell*0.68,cell*0.68,cell*0.34); ctx.fill();
+    ctx.fillStyle="#201400";
+    ctx.beginPath(); ctx.arc(px+cell*0.4,py+cell*0.45,cell*0.06,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(px+cell*0.6,py+cell*0.45,cell*0.06,0,7); ctx.fill();
+  }
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+
+  addEventListener("keydown", function(e){
+    var k=e.key;
+    if(k==="ArrowUp"||k==="w"||k==="W") move(-1,0);
+    else if(k==="ArrowDown"||k==="s"||k==="S") move(1,0);
+    else if(k==="ArrowLeft"||k==="a"||k==="A") move(0,-1);
+    else if(k==="ArrowRight"||k==="d"||k==="D") move(0,1);
+    else if(k==="u"||k==="U") undo();
+    else if(k==="r"||k==="R") loadLevel(level);
+    if(k.indexOf("Arrow")===0) e.preventDefault();
+  });
+  ovBtn.addEventListener("click", function(){
+    if(level<LEVELS.length-1) loadLevel(level+1); else loadLevel(0);
+  });
+
+  loadLevel(0);
+  (function loop(){ draw(); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

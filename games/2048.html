@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>2048</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;
+    border-radius:10px;background:#05070a;box-shadow:0 12px 40px -12px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<canvas id="c" width="404" height="470"></canvas>
+<script>
+(function(){
+  var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var OX=12, OY=78, GAP=12, CELL=80, N=4;
+  var board, score, best, state, pop;
+  best = +(localStorage.getItem("g2048_best") || 0);
+
+  var COLORS={2:"#3c4351",4:"#4a5364",8:"#f7931a",16:"#ff9f33",32:"#ffb454",
+    64:"#ff8c1a",128:"#38bdf8",256:"#60a5fa",512:"#3b82f6",1024:"#a855f7",2048:"#22c55e"};
+  var LIGHT={2:"#dfe5ee",4:"#dfe5ee",8:"#1a1200",16:"#1a1200",32:"#1a1200",64:"#fff"};
+
+  function empty(){ var a=[]; for(var i=0;i<N*N;i++) a.push(0); return a; }
+  function reset(){
+    board=empty(); score=0; state="play"; pop=-1;
+    addTile(); addTile();
+  }
+  function addTile(){
+    var free=[]; for(var i=0;i<N*N;i++) if(!board[i]) free.push(i);
+    if(!free.length) return;
+    var idx=free[(Math.random()*free.length)|0];
+    board[idx]=Math.random()<0.9?2:4;
+    pop=idx;
+  }
+  function get(i,j){ return board[i*N+j]; }
+  function put(i,j,v){ board[i*N+j]=v; }
+
+  function lineOf(dir,k){
+    var l=[];
+    for(var j=0;j<N;j++){
+      var i,c;
+      if(dir==="left"){ i=k; c=j; }
+      else if(dir==="right"){ i=k; c=N-1-j; }
+      else if(dir==="up"){ i=j; c=k; }
+      else { i=N-1-j; c=k; }
+      l.push(get(i,c));
+    }
+    return l;
+  }
+  function setLine(dir,k,l){
+    for(var j=0;j<N;j++){
+      var i,c;
+      if(dir==="left"){ i=k; c=j; }
+      else if(dir==="right"){ i=k; c=N-1-j; }
+      else if(dir==="up"){ i=j; c=k; }
+      else { i=N-1-j; c=k; }
+      put(i,c,l[j]);
+    }
+  }
+  function slideLine(l){
+    var arr=l.filter(function(v){return v;}), out=[], gained=0;
+    for(var i=0;i<arr.length;i++){
+      if(i+1<arr.length && arr[i]===arr[i+1]){ out.push(arr[i]*2); gained+=arr[i]*2; i++; }
+      else out.push(arr[i]);
+    }
+    while(out.length<N) out.push(0);
+    return {line:out, gained:gained};
+  }
+  function canMove(){
+    for(var i=0;i<N*N;i++) if(!board[i]) return true;
+    for(var r=0;r<N;r++) for(var c=0;c<N;c++){
+      var v=get(r,c);
+      if(c<N-1 && v===get(r,c+1)) return true;
+      if(r<N-1 && v===get(r+1,c)) return true;
+    }
+    return false;
+  }
+  function move(dir){
+    if(state!=="play") return;
+    var moved=false, gained=0;
+    for(var k=0;k<N;k++){
+      var res=slideLine(lineOf(dir,k));
+      gained+=res.gained;
+      for(var j=0;j<N;j++){ if(res.line[j]!==lineOf(dir,k)[j]) moved=true; }
+      setLine(dir,k,res.line);
+    }
+    if(moved){
+      score+=gained; pop=-1;
+      addTile();
+      if(score>best){ best=score; localStorage.setItem("g2048_best",best); }
+      if(board.indexOf(2048)>=0 && state==="play" && !window.__won){ window.__won=true; state="win"; }
+      else if(!canMove()) state="over";
+    }
+  }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+  function draw(){
+    ctx.fillStyle="#05070a"; ctx.fillRect(0,0,W,H);
+    ctx.textAlign="left";
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("SCORE", 14, 22);
+    ctx.fillStyle="#eef1f5"; ctx.font="800 24px Inter, Arial";
+    ctx.fillText(score, 14, 48);
+    ctx.textAlign="right";
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("BEST", W-14, 22);
+    ctx.fillStyle="#f7931a"; ctx.font="800 24px Inter, Arial";
+    ctx.fillText(best, W-14, 48);
+
+    for(var r=0;r<N;r++) for(var c=0;c<N;c++){
+      var x=OX+c*(CELL+GAP), y=OY+r*(CELL+GAP);
+      ctx.fillStyle="#12151b"; rr(x,y,CELL,CELL,10);
+      var v=get(r,c); if(!v) continue;
+      ctx.fillStyle=COLORS[v]||"#22c55e"; rr(x,y,CELL,CELL,10);
+      ctx.fillStyle=LIGHT[v]||"#fff";
+      var fs = v<100?38:v<1000?32:26;
+      ctx.font="800 "+fs+"px Inter, Arial";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(v, x+CELL/2, y+CELL/2+2);
+      ctx.textBaseline="alphabetic";
+    }
+    ctx.textAlign="center"; ctx.fillStyle="#6b7480"; ctx.font="500 12px Inter, Arial";
+    ctx.fillText("Arrow keys / WASD to move  ·  swipe on touch", W/2, H-10);
+
+    if(state==="win"){
+      ctx.fillStyle="rgba(5,7,10,.82)"; ctx.fillRect(0,0,W,H);
+      ctx.textAlign="center";
+      ctx.fillStyle="#22c55e"; ctx.font="800 38px Inter, Arial";
+      ctx.fillText("2048!", W/2, H/2-20);
+      ctx.fillStyle="#eef1f5"; ctx.font="600 16px Inter, Arial";
+      ctx.fillText("You reached 2048. Keep going?", W/2, H/2+14);
+      ctx.fillStyle="#98a2b3"; ctx.font="500 14px Inter, Arial";
+      ctx.fillText("Press Space to continue", W/2, H/2+46);
+    }
+    if(state==="over"){
+      ctx.fillStyle="rgba(5,7,10,.86)"; ctx.fillRect(0,0,W,H);
+      ctx.textAlign="center";
+      ctx.fillStyle="#eef1f5"; ctx.font="800 36px Inter, Arial";
+      ctx.fillText("Game Over", W/2, H/2-24);
+      ctx.fillStyle="#f7931a"; ctx.font="700 24px Inter, Arial";
+      ctx.fillText("Score "+score, W/2, H/2+14);
+      ctx.fillStyle="#98a2b3"; ctx.font="500 14px Inter, Arial";
+      ctx.fillText("Press Space or tap to play again", W/2, H/2+50);
+    }
+  }
+  var KEY={ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",
+    a:"left",d:"right",w:"up",s:"down",A:"left",D:"right",W:"up",S:"down"};
+  addEventListener("keydown", function(e){
+    if(e.key===" "){
+      e.preventDefault();
+      if(state==="win"){ state="play"; draw(); }
+      else if(state==="over"){ window.__won=false; reset(); }
+      return;
+    }
+    var dir=KEY[e.key]; if(!dir) return;
+    e.preventDefault(); move(dir); draw();
+  });
+  var sx=0,sy=0;
+  cv.addEventListener("touchstart", function(e){ var t=e.touches[0]; sx=t.clientX; sy=t.clientY; }, {passive:true});
+  cv.addEventListener("touchend", function(e){
+    if(state==="over"){ window.__won=false; reset(); draw(); return; }
+    if(state==="win"){ state="play"; draw(); return; }
+    var t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+    if(Math.max(Math.abs(dx),Math.abs(dy))<22) return;
+    if(Math.abs(dx)>Math.abs(dy)) move(dx>0?"right":"left"); else move(dy>0?"down":"up");
+    draw();
+  }, {passive:true});
+  cv.addEventListener("mousedown", function(){ if(state==="over"){ window.__won=false; reset(); draw(); } });
+
+  reset(); draw();
+})();
+</script>
+</body>
+</html>

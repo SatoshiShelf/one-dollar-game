@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Blockfall</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;
+    border-radius:10px;background:#05070a;box-shadow:0 12px 40px -12px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<canvas id="c" width="400" height="560"></canvas>
+<script>
+(function(){
+  var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+  var COLS=10, ROWS=20, CELL=26, OX=10, OY=20;
+  var W=cv.width, H=cv.height;
+  var SHAPES=[
+    {c:"#38bdf8", m:[[1,1,1,1]]},
+    {c:"#f7931a", m:[[1,1],[1,1]]},
+    {c:"#a855f7", m:[[0,1,0],[1,1,1]]},
+    {c:"#22c55e", m:[[0,1,1],[1,1,0]]},
+    {c:"#ef4444", m:[[1,1,0],[0,1,1]]},
+    {c:"#3b82f6", m:[[1,0,0],[1,1,1]]},
+    {c:"#f59e0b", m:[[0,0,1],[1,1,1]]}
+  ];
+  var board, cur, next, score, best, lines, level, state, bag;
+  best = +(localStorage.getItem("blockfall_best") || 0);
+
+  function empty(){ var b=[]; for(var r=0;r<ROWS;r++){ b.push(new Array(COLS).fill(0)); } return b; }
+  function refillBag(){ bag=[0,1,2,3,4,5,6]; for(var i=bag.length-1;i>0;i--){ var j=(Math.random()*(i+1))|0; var t=bag[i];bag[i]=bag[j];bag[j]=t; } }
+  function take(){
+    if(!bag.length) refillBag();
+    var idx=bag.pop(), s=SHAPES[idx];
+    return { m:s.m.map(function(r){return r.slice();}), c:s.c, x:Math.floor(COLS/2)-Math.ceil(s.m[0].length/2), y:-1 };
+  }
+  function reset(){
+    board=empty(); refillBag(); cur=take(); next=take();
+    score=0; lines=0; level=1; state="play";
+  }
+  function collide(m,px,py){
+    for(var r=0;r<m.length;r++) for(var c=0;c<m[r].length;c++){
+      if(!m[r][c]) continue;
+      var bx=px+c, by=py+r;
+      if(bx<0||bx>=COLS||by>=ROWS) return true;
+      if(by>=0 && board[by][bx]) return true;
+    }
+    return false;
+  }
+  function rotate(m){
+    var R=m.length, C=m[0].length, o=[];
+    for(var c=0;c<C;c++){ o.push([]); for(var r=R-1;r>=0;r--) o[c].push(m[r][c]); }
+    return o;
+  }
+  function tryRotate(){
+    var m=rotate(cur.m);
+    var kicks=[0,-1,1,-2,2];
+    for(var i=0;i<kicks.length;i++){ if(!collide(m,cur.x+kicks[i],cur.y)){ cur.m=m; cur.x+=kicks[i]; return; } }
+  }
+  function merge(){
+    for(var r=0;r<cur.m.length;r++) for(var c=0;c<cur.m[r].length;c++){
+      if(cur.m[r][c] && cur.y+r>=0) board[cur.y+r][cur.x+c]=cur.c;
+    }
+  }
+  function clearLines(){
+    var cleared=0;
+    for(var r=ROWS-1;r>=0;r--){
+      var full=true; for(var c=0;c<COLS;c++) if(!board[r][c]){ full=false; break; }
+      if(full){ board.splice(r,1); board.unshift(new Array(COLS).fill(0)); cleared++; r++; }
+    }
+    if(cleared){
+      var table={1:100,2:300,3:500,4:800};
+      score += (table[cleared]||0)*level;
+      lines += cleared;
+      level = 1 + Math.floor(lines/10);
+    }
+  }
+  function spawn(){
+    cur=next; next=take();
+    if(collide(cur.m,cur.x,cur.y)){ state="over"; if(score>best){ best=score; localStorage.setItem("blockfall_best", best); } }
+  }
+  function lock(){
+    merge(); clearLines(); spawn();
+  }
+  function softStep(){
+    if(!collide(cur.m,cur.x,cur.y+1)) cur.y++;
+    else lock();
+  }
+  function hardDrop(){
+    var d=0; while(!collide(cur.m,cur.x,cur.y+1)){ cur.y++; d++; }
+    score+=d*2; lock();
+  }
+  function move(dx){ if(!collide(cur.m,cur.x+dx,cur.y)) cur.x+=dx; }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+  function cell(x,y,color,alpha){
+    ctx.globalAlpha=alpha||1;
+    ctx.fillStyle=color; rr(x+1,y+1,CELL-2,CELL-2,4);
+    ctx.fillStyle="rgba(255,255,255,.16)"; rr(x+1,y+1,CELL-2,6,3);
+    ctx.globalAlpha=1;
+  }
+  function drawMini(m, color, x, y){
+    for(var r=0;r<m.length;r++) for(var c=0;c<m[r].length;c++) if(m[r][c]){
+      ctx.fillStyle=color; rr(x+c*20, y+r*20, 17, 17, 3);
+    }
+  }
+  function draw(){
+    ctx.fillStyle="#05070a"; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle="#1c212b"; ctx.lineWidth=2;
+    ctx.strokeRect(OX-1, OY-1, COLS*CELL+2, ROWS*CELL+2);
+    ctx.strokeStyle="rgba(255,255,255,.03)"; ctx.lineWidth=1;
+    for(var i=1;i<COLS;i++){ ctx.beginPath(); ctx.moveTo(OX+i*CELL,OY); ctx.lineTo(OX+i*CELL,OY+ROWS*CELL); ctx.stroke(); }
+    for(var j=1;j<ROWS;j++){ ctx.beginPath(); ctx.moveTo(OX,OY+j*CELL); ctx.lineTo(OX+COLS*CELL,OY+j*CELL); ctx.stroke(); }
+
+    for(var r=0;r<ROWS;r++) for(var c=0;c<COLS;c++) if(board[r][c]) cell(OX+c*CELL, OY+r*CELL, board[r][c]);
+
+    if(state==="play"){
+      var gy=cur.y; while(!collide(cur.m,cur.x,gy+1)) gy++;
+      for(var r2=0;r2<cur.m.length;r2++) for(var c2=0;c2<cur.m[r2].length;c2++) if(cur.m[r2][c2] && gy+r2>=0)
+        { ctx.globalAlpha=.16; ctx.fillStyle=cur.c; rr(OX+(cur.x+c2)*CELL+2, OY+(gy+r2)*CELL+2, CELL-4, CELL-4, 3); ctx.globalAlpha=1; }
+      for(var r3=0;r3<cur.m.length;r3++) for(var c3=0;c3<cur.m[r3].length;c3++) if(cur.m[r3][c3] && cur.y+r3>=0)
+        cell(OX+(cur.x+c3)*CELL, OY+(cur.y+r3)*CELL, cur.c);
+    }
+
+    var px=OX+COLS*CELL+24;
+    ctx.textAlign="left";
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("SCORE", px, OY+6);
+    ctx.fillStyle="#eef1f5"; ctx.font="800 24px Inter, Arial";
+    ctx.fillText(score, px, OY+32);
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("LEVEL", px, OY+66);
+    ctx.fillStyle="#f7931a"; ctx.font="800 22px Inter, Arial";
+    ctx.fillText(level, px, OY+90);
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("LINES", px, OY+124);
+    ctx.fillStyle="#eef1f5"; ctx.font="800 22px Inter, Arial";
+    ctx.fillText(lines, px, OY+148);
+    ctx.fillStyle="#98a2b3"; ctx.font="600 12px Inter, Arial";
+    ctx.fillText("NEXT", px, OY+190);
+    drawMini(next.m, next.c, px, OY+200);
+    ctx.fillStyle="#6b7480"; ctx.font="500 11px Inter, Arial";
+    ctx.fillText("BEST "+best, px, OY+300);
+    ctx.fillText("← → move", px, OY+340);
+    ctx.fillText("↑ rotate", px, OY+358);
+    ctx.fillText("↓ soft", px, OY+376);
+    ctx.fillText("space drop", px, OY+394);
+
+    if(state==="over"){
+      ctx.fillStyle="rgba(5,7,10,.85)"; ctx.fillRect(0,0,W,H);
+      ctx.textAlign="center";
+      ctx.fillStyle="#eef1f5"; ctx.font="800 36px Inter, Arial";
+      ctx.fillText("Game Over", W/2, H/2-20);
+      ctx.fillStyle="#f7931a"; ctx.font="700 24px Inter, Arial";
+      ctx.fillText("Score "+score, W/2, H/2+18);
+      ctx.fillStyle="#98a2b3"; ctx.font="500 15px Inter, Arial";
+      ctx.fillText("Press Space or tap to play again", W/2, H/2+56);
+    }
+  }
+  var dropAcc=0;
+  function gravity(dt){
+    if(state!=="play") return;
+    dropAcc+=dt;
+    var interval=Math.max(80, 820-(level-1)*70);
+    if(dropAcc>=interval){ dropAcc=0; softStep(); }
+  }
+  function action(){
+    if(state==="over"){ reset(); return; }
+  }
+  addEventListener("keydown", function(e){
+    if(state==="over"){ if(e.key===" ") { e.preventDefault(); reset(); } return; }
+    if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A"){ e.preventDefault(); move(-1); }
+    else if(e.key==="ArrowRight"||e.key==="d"||e.key==="D"){ e.preventDefault(); move(1); }
+    else if(e.key==="ArrowDown"||e.key==="s"||e.key==="S"){ e.preventDefault(); if(!collide(cur.m,cur.x,cur.y+1)){ cur.y++; score+=1; } else lock(); }
+    else if(e.key==="ArrowUp"||e.key==="w"||e.key==="W"||e.key==="x"||e.key==="X"){ e.preventDefault(); tryRotate(); }
+    else if(e.key===" "){ e.preventDefault(); hardDrop(); }
+  });
+  cv.addEventListener("mousedown", function(){ action(); });
+  cv.addEventListener("touchstart", function(e){ e.preventDefault(); action(); }, {passive:false});
+
+  reset();
+  var l0=0;
+  function loop2(t){
+    requestAnimationFrame(loop2);
+    if(!l0) l0=t; var dt=t-l0; l0=t;
+    if(state==="play"){ gravity(dt); }
+    draw();
+  }
+  loop2(0);
+})();
+</script>
+</body>
+</html>

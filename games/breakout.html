@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Breakout</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0c10;color:#eef1f5;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;width:auto;height:auto;touch-action:none;
+    border-radius:10px;background:#05070a;box-shadow:0 12px 40px -12px rgba(0,0,0,.8)}
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="360"></canvas>
+<script>
+(function(){
+  var cv=document.getElementById("c"), ctx=cv.getContext("2d");
+  var W=cv.width, H=cv.height;
+  var paddle, ball, bricks, lives, score, best, state, keys, launch;
+  best = +(localStorage.getItem("breakout_best") || 0);
+  var COLS=8, ROWS=5, PADW=90, PADH=12, BW=(W-40)/COLS, BH=20, TOP=46;
+  var COLORS=["#f7931a","#ffc266","#38bdf8","#a855f7","#22c55e"];
+
+  function reset(){
+    paddle={x:W/2-PADW/2, y:H-26, w:PADW, h:PADH};
+    ball={x:W/2, y:H-46, r:6, vx:0, vy:0};
+    bricks=[]; lives=3; score=0; state="ready"; keys={}; launch=false;
+    for (var r=0;r<ROWS;r++) for (var c=0;c<COLS;c++)
+      bricks.push({x:20+c*BW, y:TOP+r*BH, w:BW-4, h:BH-4, c:COLORS[r%COLORS.length], hit:false});
+  }
+  function serve(){
+    state="play";
+    var ang = -Math.PI/2 + (Math.random()*0.7-0.35);
+    var sp = 3.4;
+    ball.vx=Math.cos(ang)*sp; ball.vy=Math.sin(ang)*sp;
+  }
+  function lose(){
+    lives--;
+    if (lives<=0){
+      state="over";
+      if (score>best){ best=score; localStorage.setItem("breakout_best", best); }
+    } else {
+      state="ready";
+      paddle.x=W/2-paddle.w/2; ball.x=W/2; ball.y=H-46; ball.vx=0; ball.vy=0;
+    }
+  }
+  function step(){
+    var speed = 6;
+    if (keys.left) paddle.x-=speed;
+    if (keys.right) paddle.x+=speed;
+    paddle.x=Math.max(0, Math.min(W-paddle.w, paddle.x));
+    if (state!=="play") return;
+
+    ball.x+=ball.vx; ball.y+=ball.vy;
+    if (ball.x-ball.r<0){ ball.x=ball.r; ball.vx*=-1; }
+    if (ball.x+ball.r>W){ ball.x=W-ball.r; ball.vx*=-1; }
+    if (ball.y-ball.r<0){ ball.y=ball.r; ball.vy*=-1; }
+    if (ball.y-ball.r>H){ lose(); return; }
+
+    if (ball.vy>0 && ball.y+ball.r>=paddle.y && ball.y-ball.r<paddle.y+paddle.h &&
+        ball.x>paddle.x-4 && ball.x<paddle.x+paddle.w+4){
+      var rel=(ball.x-(paddle.x+paddle.w/2))/(paddle.w/2);
+      var ang=-Math.PI/2 + rel*1.05;
+      var sp=Math.min(6, Math.hypot(ball.vx,ball.vy)+0.06);
+      ball.vx=Math.cos(ang)*sp; ball.vy=Math.sin(ang)*sp;
+      ball.y=paddle.y-ball.r-0.1;
+    }
+    for (var i=0;i<bricks.length;i++){
+      var b=bricks[i]; if (b.hit) continue;
+      if (ball.x+ball.r>b.x && ball.x-ball.r<b.x+b.w && ball.y+ball.r>b.y && ball.y-ball.r<b.y+b.h){
+        b.hit=true; score+=10;
+        var ox = Math.min(ball.x+ball.r-b.x, b.x+b.w-(ball.x-ball.r));
+        var oy = Math.min(ball.y+ball.r-b.y, b.y+b.h-(ball.y-ball.r));
+        if (ox<oy) ball.vx*=-1; else ball.vy*=-1;
+        break;
+      }
+    }
+    if (bricks.every(function(b){return b.hit;})) state="win";
+  }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+  function draw(){
+    ctx.fillStyle="#05070a"; ctx.fillRect(0,0,W,H);
+    for (var i=0;i<bricks.length;i++){
+      var b=bricks[i]; if (b.hit) continue;
+      ctx.fillStyle=b.c; rr(b.x,b.y,b.w,b.h,4);
+    }
+    ctx.fillStyle="#f7931a"; rr(paddle.x,paddle.y,paddle.w,paddle.h,6);
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,7); ctx.fill();
+    ctx.fillStyle="#98a2b3"; ctx.font="600 15px Inter, Arial"; ctx.textAlign="left";
+    var left=bricks.filter(function(b){return !b.hit;}).length;
+    ctx.fillText("SCORE  "+score+"     BRICKS  "+left+"     LIVES  "+lives, 14, 26);
+    if (state==="ready"){
+      ctx.textAlign="center"; ctx.fillStyle="#eef1f5"; ctx.font="700 18px Inter, Arial";
+      ctx.fillText("Click / press Space to launch", W/2, H/2);
+    } else if (state==="over" || state==="win"){
+      ctx.fillStyle="rgba(5,7,10,.82)"; ctx.fillRect(0,0,W,H);
+      ctx.textAlign="center";
+      ctx.fillStyle= state==="win" ? "#22c55e" : "#eef1f5"; ctx.font="800 38px Inter, Arial";
+      ctx.fillText(state==="win"?"You cleared it!":"Game Over", W/2, H/2-24);
+      ctx.fillStyle="#f7931a"; ctx.font="700 24px Inter, Arial";
+      ctx.fillText("Score "+score, W/2, H/2+16);
+      ctx.fillStyle="#98a2b3"; ctx.font="500 15px Inter, Arial";
+      ctx.fillText("Click or press Space to play again", W/2, H/2+52);
+    }
+  }
+  var last=0, acc=0;
+  function loop(t){
+    requestAnimationFrame(loop);
+    if(!last) last=t; acc+=t-last; last=t;
+    while (acc>=16){ acc-=16; step(); if(state==="over"||state==="win") break; }
+    draw();
+  }
+  function launchOrReset(){
+    if (state==="ready") serve();
+    else if (state==="over"||state==="win"){ reset(); }
+  }
+  addEventListener("keydown", function(e){
+    if (e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=true;
+    if (e.key==="ArrowRight"||e.key==="d"||e.key==="D") keys.right=true;
+    if (e.key===" ") { e.preventDefault(); launchOrReset(); }
+  });
+  addEventListener("keyup", function(e){
+    if (e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=false;
+    if (e.key==="ArrowRight"||e.key==="d"||e.key==="D") keys.right=false;
+  });
+  function moveTo(clientX){
+    var r=cv.getBoundingClientRect();
+    var x=(clientX-r.left)*W/r.width;
+    paddle.x=Math.max(0, Math.min(W-paddle.w, x-paddle.w/2));
+  }
+  cv.addEventListener("mousemove", function(e){ moveTo(e.clientX); });
+  cv.addEventListener("mousedown", function(e){ moveTo(e.clientX); launchOrReset(); });
+  cv.addEventListener("touchstart", function(e){ moveTo(e.touches[0].clientX); e.preventDefault(); }, {passive:false});
+  cv.addEventListener("touchmove", function(e){ moveTo(e.touches[0].clientX); e.preventDefault(); }, {passive:false});
+  cv.addEventListener("touchend", function(){ launchOrReset(); });
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
