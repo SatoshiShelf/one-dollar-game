@@ -56,12 +56,12 @@ git init
 git add .
 git commit -m "One Dollar Game"
 git branch -M main
-git remote add origin https://github.com/xGhabra/one-dollar-game.git
+git remote add origin https://github.com/SatoshiShelf/one-dollar-game.git
 git push -u origin main
 ```
 
 GitHub → **Settings → Pages → Source: Deploy from a branch → main / (root)**.
-Live at `https://xghabra.github.io/one-dollar-game/`.
+Live at `https://satoshishelf.github.io/one-dollar-game/`.
 
 ## How checkout works
 
